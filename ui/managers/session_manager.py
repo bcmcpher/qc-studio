@@ -85,6 +85,30 @@ class SessionManager:
         """Set the exact user-facing rater ID shown in the UI."""
         st.session_state[SESSION_KEYS["rater_id_display"]] = str(rater_id or "").strip()
 
+    # Authenticated identity (multi-user mode)
+    @staticmethod
+    def apply_user_identity(ctx: dict) -> None:
+        """Bind the session to the authenticated user from the run context (multi-user mode).
+
+        In multi-user mode the rater ID comes from the users config and is locked so
+        the landing form or an imported TSV cannot redirect output to another rater.
+        """
+        multi_user = bool(ctx.get("multi_user"))
+        st.session_state["auth_user_email"] = str(ctx.get("user_email") or "") if multi_user else ""
+        st.session_state["rater_id_locked"] = multi_user
+        if multi_user and ctx.get("rater_id"):
+            SessionManager.set_rater_id(ctx["rater_id"])
+
+    @staticmethod
+    def get_user_email() -> str:
+        """Authenticated email for this session ("" in single-user mode)."""
+        return str(st.session_state.get("auth_user_email", "") or "").strip()
+
+    @staticmethod
+    def is_rater_id_locked() -> bool:
+        """True when the rater ID is bound to the authenticated user and must not be edited."""
+        return bool(st.session_state.get("rater_id_locked", False))
+
     @staticmethod
     def get_qc_session_id() -> str:
         """Get the active QC rating-session identifier."""

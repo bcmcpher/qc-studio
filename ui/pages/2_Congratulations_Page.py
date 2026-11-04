@@ -13,6 +13,7 @@ from views.congratulations_page import show_congratulations_page
 st.set_page_config(layout="wide")
 ctx = get_cli_run_context()
 SessionManager.init_session_state()
+SessionManager.apply_user_identity(ctx)
 SessionManager.compact_duplicate_qc_records_if_needed()
 st.sidebar.empty()
 qc_cohort = ctx.get("qc_cohort") or []

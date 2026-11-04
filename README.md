@@ -99,6 +99,61 @@ cd ui
 ./fmriprep_test.sh
 ```
 
+### Multi-user deployment (Cloudflare Access)
+
+Several raters can use one running QC-Studio at the same time. Each rater sees only their assigned participants and writes their ratings to their own folder. Users are identified by the email Cloudflare Access authenticated.
+
+1. **Describe the raters** in a `users.json` (see [`pipelines/users_config.example.json`](pipelines/users_config.example.json)):
+
+   ```json
+   {
+     "rater_root": "/data/qc-datasets/qc-raters",
+     "users": {
+       "alice@mcgill.ca": {
+         "rater_id": "alice",
+         "rater_dir": "alice",
+         "participant_list": "alice_primary_participant_list.tsv"
+       },
+       "bob@mcgill.ca": {"participant_list": "bob.tsv", "session_list": "ses-BL"}
+     }
+   }
+   ```
+
+   | Key | Required | Meaning |
+   |-----|----------|---------|
+   | `rater_root` (top level) | no | Folder holding the rater folders: absolute, or relative to `users.json`. Defaults to the folder containing `users.json`. |
+   | `rater_id` | no | Used in file names. Defaults to the part of the email before the `@`. |
+   | `rater_dir` | no | The rater's folder, relative to `rater_root` (an absolute path ignores `rater_root`). Defaults to `<rater_id>`. |
+   | `participant_list` | yes | Tab-separated file inside `rater_dir` with a `participant_id` column and an optional `session_id` column. |
+   | `session_list` | no | Overrides the launcher's `--session_list` for this rater. A `session_id` column takes precedence over both. |
+   | `output_dir` | no | Where ratings are saved, relative to `rater_dir`. Defaults to `<rater_dir>/qc-output`. |
+
+   - Email keys are case-insensitive.
+   - A broken entry only affects that rater. Entries that share an email, rater ID or output folder are all rejected, so raters never overwrite each other.
+   - You can edit the file while the app runs: changes apply on the next page load. Re-run the check below after editing.
+   - Emails that aren't in the file, or whose setup is incomplete, are refused at sign-in.
+
+2. **Check the setup.** This changes nothing and prints a status table for every rater (ready, needs an output folder, not ready, invalid entry) plus the reasons:
+
+   ```bash
+   cd ui
+   python check_users_setup.py /data/qc-datasets/qc-raters/users.json --session_list ses-BL
+   ```
+
+3. **Launch** with [`ui/launch_studio_multi.sh`](ui/launch_studio_multi.sh) (edit the dataset and pipeline settings at the top first). It runs the check, asks for confirmation, creates missing `qc-output` folders for ready raters, and starts Streamlit on `127.0.0.1` so the tunnel is the only way in:
+
+   ```bash
+   ./launch_studio_multi.sh /data/qc-datasets/qc-raters/users.json 8501           # interactive
+   ./launch_studio_multi.sh /data/qc-datasets/qc-raters/users.json 8501 --check   # summary only
+   ./launch_studio_multi.sh /data/qc-datasets/qc-raters/users.json 8501 --yes     # no prompt
+   ```
+
+4. **Verify identity (recommended).** Set `CF_ACCESS_TEAM_DOMAIN` (e.g. `myteam.cloudflareaccess.com`) and `CF_ACCESS_AUD` in `.env`. The AUD is the Application Audience tag in Zero Trust → Access → Applications → your app → Overview. With both set, the signed `Cf-Access-Jwt-Assertion` token is checked against Cloudflare's public keys. Without them, the `Cf-Access-Authenticated-User-Email` header is trusted as-is, which is safe only when Streamlit can't be reached except through the tunnel.
+
+Each rater's files end up in `<output_dir>/checkpoints/*.tsv` and `<output_dir>/<rater_id>_<pipeline>_<task>_qc_status.tsv`. Raters can't edit their rater ID, and importing another rater's file won't change it.
+
+To test locally without a tunnel, set `QC_STUDIO_DEV_USER_EMAIL=alice@mcgill.ca` in the environment. Never set it on a server: the check and the launcher refuse to run while it is set.
+
 ## 🔗 Related Projects
 
 - [Nipoppy](https://github.com/nipoppy/nipoppy) - Lightweight framework for standardized organization and processing of neuroimaging-clinical datasets.

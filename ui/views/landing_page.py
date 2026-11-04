@@ -340,7 +340,10 @@ def _show_import_confirmation_dialog(
                 source_df = payload["source_df"]
                 if len(source_df) > 0:
                     first_record = source_df.iloc[0]
-                    SessionManager.set_rater_id(str(first_record.get("rater_id", "")))
+                    # In multi-user mode the rater ID is bound to the signed-in user;
+                    # an imported file must not redirect output to another rater.
+                    if not SessionManager.is_rater_id_locked():
+                        SessionManager.set_rater_id(str(first_record.get("rater_id", "")))
                     SessionManager.set_rater_experience(str(first_record.get("rater_experience", "")))
                     SessionManager.set_rater_fatigue(str(first_record.get("rater_fatigue", "")))
                     SessionManager.set_rater_screen_size(str(first_record.get("rater_screen_size", "")))
@@ -519,7 +522,12 @@ def _display_rater_form(entrypoint_rel_path: str | None = None) -> None:
     st.subheader(MESSAGES["rater_info_header"])
     with st.form("rater_form"):
         # Rater name/ID
-        rater_id = st.text_input(MESSAGES["rater_id_prompt"], value=SessionManager.get_rater_id_display())
+        rater_locked = SessionManager.is_rater_id_locked()
+        rater_id = st.text_input(MESSAGES["rater_id_prompt"], value=SessionManager.get_rater_id_display(), disabled=rater_locked)
+        if rater_locked:
+            user_email = SessionManager.get_user_email()
+            st.caption(f"👤 Signed in as {user_email}" if user_email else "Rater ID is set by the QC administrator.")
+            rater_id = SessionManager.get_rater_id_display() or SessionManager.get_rater_id()
 
         # Keep the exact display value for the landing-page greeting and form, while
         # still normalizing for filename safety when the session is exported.

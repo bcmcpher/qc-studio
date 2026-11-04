@@ -38,8 +38,9 @@ def parse_args(args=None):
     parser.add_argument(
         "--participant_list",
         dest="participant_list",
-        help=("List of participants to QC"),
-        required=True,
+        help=("List of participants to QC. Required unless --users_config is given " "(then each user's list comes from that file)."),
+        required=False,
+        default=None,
     )
     parser.add_argument(
         "--session_list",
@@ -69,8 +70,9 @@ def parse_args(args=None):
     parser.add_argument(
         "--output_dir",
         dest="out_dir",
-        help="Directory to save session state and QC results",
-        required=True,
+        help="Directory to save session state and QC results (ignored with --users_config: " "each user's output_dir comes from that file)",
+        required=False,
+        default=None,
     )
     parser.add_argument(
         "--qc_json",
@@ -93,8 +95,74 @@ def parse_args(args=None):
         default=DEFAULT_QC_RATING,
         choices=DEFAULT_QC_RATING_OPTIONS,
     )
+    parser.add_argument(
+        "--users_config",
+        dest="users_config",
+        help=(
+            "Multi-user mode: JSON mapping authenticated emails (Cloudflare Access) to "
+            "per-user rater_id / rater_dir / participant_list / session_list / output_dir. "
+            "Each user writes to <rater_dir>/qc-output/ unless overridden. Validate it with "
+            "check_users_setup.py before launching."
+        ),
+        required=False,
+        default=None,
+    )
 
-    return parser.parse_args(args)
+    parsed = parser.parse_args(args)
+    if not parsed.users_config:
+        if not parsed.participant_list:
+            parser.error("--participant_list is required unless --users_config is given")
+        if not parsed.out_dir:
+            parser.error("--output_dir is required unless --users_config is given")
+    return parsed
+
+
+def _apply_user_overrides(args) -> str:
+    """Multi-user mode: swap CLI cohort/output args for the connected user's values.
+
+    Returns the authenticated email. Stops the Streamlit script (after showing an
+    error) when the user cannot be identified or is not in the users config.
+    """
+    from utils.identity import IdentityError, get_current_user
+    from utils.user_config import UsersConfigError, load_users_config
+
+    try:
+        identity = get_current_user()
+    except IdentityError as exc:
+        st.error(f"QC-Studio identity configuration error: {exc}")
+        st.stop()
+    if identity is None:
+        st.error(
+            "Could not determine who you are. QC-Studio must be accessed through the "
+            "Cloudflare Access protected URL. Please reload the page or sign in again."
+        )
+        st.stop()
+    try:
+        users_cfg = load_users_config(args.users_config)
+    except UsersConfigError as exc:
+        print(f"QC-Studio: {exc}", file=sys.stderr)
+        st.error("QC-Studio is misconfigured (users config could not be loaded). Please contact the QC administrator.")
+        st.stop()
+    overrides = users_cfg.users.get(identity.email)
+    if overrides is None:
+        if identity.email in users_cfg.rejected:
+            reasons = "; ".join(users_cfg.rejected[identity.email])
+            print(f"QC-Studio: rejected users config entry for {identity.email}: {reasons}", file=sys.stderr)
+            st.error(f"The QC setup for **{identity.email}** has a problem. Please contact the QC administrator.")
+        else:
+            st.error(f"**{identity.email}** is not assigned to a QC cohort. Please contact the QC administrator.")
+        st.stop()
+    if not Path(overrides["participant_list"]).is_file():
+        print(f"QC-Studio: participant list for {identity.email} not found: {overrides['participant_list']}", file=sys.stderr)
+        st.error(f"No participant list has been set up for **{identity.email}** yet. Please contact the QC administrator.")
+        st.stop()
+
+    args.participant_list = overrides["participant_list"]
+    if overrides.get("session_list"):
+        args.session_list = overrides["session_list"]
+    args.out_dir = overrides["out_dir"]
+    args.rater_id = overrides["rater_id"]
+    return identity.email
 
 
 def get_cli_run_context():
@@ -105,10 +173,17 @@ def get_cli_run_context():
     """
     args = parse_args()
     args.out_dir = str(Path(args.out_dir).expanduser().resolve()) if args.out_dir else str(Path(".").expanduser().resolve())
+    multi_user = bool(getattr(args, "users_config", None))
+    user_email = _apply_user_overrides(args) if multi_user else None
     ui_dir = os.path.dirname(os.path.abspath(__file__))
     qc_config_path = os.path.join(ui_dir, args.qc_json)
     participants_df = pd.read_csv(args.participant_list, delimiter="\t")
     if args.session_list is None and "session_id" not in participants_df.columns:
+        if multi_user:
+            # Never SystemExit inside a shared server; refuse just this user.
+            print(f"QC-Studio: no sessions for {user_email}: set session_list or add a session_id column", file=sys.stderr)
+            st.error("Your participant list does not specify sessions. Please contact the QC administrator.")
+            st.stop()
         print(
             "QC-Studio: cannot tell which sessions to QC. Pass --session_list ses-01,ses-02,... "
             "or --session_list none if the dataset has no sessions "
@@ -151,6 +226,8 @@ def get_cli_run_context():
         "qc_cohort": qc_cohort,
         "rater_id": getattr(args, "rater_id", None),
         "default_qc_rating": getattr(args, "default_qc_rating", DEFAULT_QC_RATING),
+        "multi_user": multi_user,
+        "user_email": user_email,
     }
 
 
@@ -170,6 +247,7 @@ def main():
 
     # Initialize session state
     SessionManager.init_session_state()
+    SessionManager.apply_user_identity(ctx)
     if ctx.get("rater_id"):
         SessionManager.set_rater_id(ctx["rater_id"])
     # Seed default rating from CLI only before landing is completed.
@@ -246,6 +324,8 @@ def main():
         show_subject_filter=on_qc_viewer_page,
         show_subject_list=on_qc_viewer_page,
     )
+    if ctx.get("multi_user") and ctx.get("user_email"):
+        st.sidebar.caption(f"👤 Signed in as {ctx['user_email']}")
 
     # Sidebar filter may have moved the page; use that for the viewer.
     current_page = SessionManager.get_current_page()

@@ -1,0 +1,16 @@
+{
+  "rater_root": "/data/qc-datasets/qc-raters",
+  "users": {
+    "alice@mcgill.ca": {
+      "rater_id": "alice",
+      "rater_dir": "alice",
+      "participant_list": "alice_primary_participant_list.tsv"
+    },
+    "bob@mcgill.ca": {
+      "rater_id": "bob",
+      "participant_list": "bob_participants.tsv",
+      "session_list": "ses-BL",
+      "output_dir": "/data/qc-output/bob"
+    }
+  }
+}
