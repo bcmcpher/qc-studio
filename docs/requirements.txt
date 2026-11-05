@@ -1,0 +1,16 @@
+# Documentation build dependencies for QC-Studio.
+# Install with: pip install -r docs/requirements.txt
+# Build with:    make -C docs html
+#
+# These are intentionally separate from requirements.txt: the Read the Docs
+# build only needs the docs toolchain, not the full runtime dependency set.
+
+# Core
+sphinx>=7.0,<9.0
+myst-parser>=3.0,<5.0
+
+# Theme and extensions
+furo>=2024.1.29
+sphinx-copybutton>=0.5.2
+# Renders the mermaid diagrams in the architecture pages.
+sphinxcontrib-mermaid>=0.9.2
