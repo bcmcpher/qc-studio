@@ -1,5 +1,7 @@
 outputs/
+output/
 ui/output/
+docs/_build/
 .venv/
 __pycache__/
 ui/__pycache__/

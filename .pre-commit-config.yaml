@@ -9,9 +9,9 @@ repos:
       - id: check-yaml
       - id: debug-statements
       - id: end-of-file-fixer
-        files: ^(ui|pipelines)/.*\.py$|^(\.github/.*\.ya?ml|\.flake8|\.codespellrc|pyproject\.toml|requirements.*\.txt|\.pre-commit-config\.yaml)$
+        files: ^(ui|pipelines)/.*\.py$|^(docs/.*\.(md|py|txt|css|bat)|docs/Makefile|README\.md|\.readthedocs\.yaml|\.github/.*\.ya?ml|\.flake8|\.codespellrc|pyproject\.toml|requirements.*\.txt|\.pre-commit-config\.yaml)$
       - id: trailing-whitespace
-        files: ^(ui|pipelines)/.*\.py$|^(\.github/.*\.ya?ml|\.flake8|\.codespellrc|pyproject\.toml|requirements.*\.txt|\.pre-commit-config\.yaml)$
+        files: ^(ui|pipelines)/.*\.py$|^(docs/.*\.(md|py|txt|css|bat)|docs/Makefile|README\.md|\.readthedocs\.yaml|\.github/.*\.ya?ml|\.flake8|\.codespellrc|pyproject\.toml|requirements.*\.txt|\.pre-commit-config\.yaml)$
 
   - repo: https://github.com/psf/black-pre-commit-mirror
     rev: 24.10.0

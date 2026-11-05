@@ -1,2 +1,2 @@
 [codespell]
-skip = *.svg,*.nii.gz,*.tsv,*.csv,*.json,sample_data,output, *.sh
+skip = *.svg,*.nii.gz,*.tsv,*.csv,*.json,sample_data,output,*.sh,docs/_build

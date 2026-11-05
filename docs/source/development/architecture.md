@@ -1,8 +1,6 @@
-# QC-Studio Architecture Documentation
+# Software Architecture
 
-## Overview
-
-QC-Studio is a Streamlit-based quality control application for neuroimaging data. This document describes the refactored architecture, module organization, and data flow.
+This document describes the software architecture, module organization, and data flow.
 
 ---
 
@@ -13,10 +11,12 @@ ui/
 ├── app.py                        # Streamlit App Entry (Main Application)
 ├── main.py                       # CLI Entry Point
 ├── constants.py                  # Core configuration and message strings
+├── _niivue_viewer_fallback.py    # Fallback when niivue-streamlit is not installed
 │
 ├── components/                   # Reusable UI Components
 │   ├── __init__.py              # Package exports
 │   ├── qc_viewer.py             # QC viewer orchestration
+│   └── iqm_viewer.py            # IQM distribution plots and metrics tables
 │
 ├── pages/                        # Streamlit multipage sidebar (thin entrypoints → views/)
 │   ├── 1_Landing_Page.py
@@ -35,15 +35,19 @@ ui/
 │
 ├── models/                       # Data Models & Types
 │   ├── __init__.py              # Clean exports (backward compatible)
-│   ├── qc_models.py             # Pydantic models
-│   └── README.md                # Model documentation
+│   └── qc_models.py             # Pydantic models
 │
 ├── utils/                        # Utility Functions by Domain
 │   ├── __init__.py
+│   ├── cohort.py                # Participant × session cohort rows
 │   ├── config.py                # QC config parsing
 │   ├── data_loaders.py          # Data loading and file I/O
 │   ├── image_processing.py      # Image montage creation
-│   └── export.py                # CSV export
+│   ├── iqm_distribution_config.py # IQM metric groups per modality
+│   ├── navigation.py            # Shared page navigation helpers
+│   ├── path_helpers.py          # Output file naming helpers
+│   ├── reference_data.py        # Reference IQM data download and filtering
+│   └── export.py                # TSV export
 │
 └── tests/                        # Comprehensive Test Suite
     ├── conftest.py              # Shared test fixtures
@@ -95,7 +99,7 @@ ui/
 #### `app.py` - Streamlit Application Entry
 **Responsibility**: Main web application orchestration
 
-**Imports**: 
+**Imports**:
 - Screen modules: `views.landing_page`, `views.congratulations_page`
 - Components: `components.qc_viewer`
 - Managers: SessionManager, NiivueViewerManager, PanelLayoutManager
@@ -118,11 +122,12 @@ Pages represent complete, full-width views shown at different stages of the QC w
 **Responsibility**: Onboarding and initial QC session configuration
 
 **Data Flow**:
-1. User enters rater information
-2. User selects which panels to display (Niivue, Montage, IQM)
-3. User optionally uploads CSV of previous QC records
-4. SessionManager stores all state
-5. Continue to QC viewers page
+1. User enters rater information (if needed)
+2. User selects the QC task and default rating in the sidebar
+3. User selects which panel(s) to display (Niivue, Montage, IQM)
+4. User optionally loads a previous results or checkpoint file
+5. SessionManager stores all state
+6. Continue to QC viewers page
 
 ---
 
@@ -131,8 +136,8 @@ Pages represent complete, full-width views shown at different stages of the QC w
 
 **Data Flow**:
 1. Display number of participants reviewed
-2. Show QC statistics (PASS/FAIL/UNCERTAIN counts)
-3. Offer CSV export with duplicate handling
+2. Show subject-level QC statistics, plus facet-level statistics for multi-facet tasks
+3. Offer TSV export with duplicate handling (one file per QC task)
 4. Navigation back to landing page
 
 ---
@@ -226,7 +231,7 @@ It centralizes layout ratios, visibility decisions, and panel sizing rules.
 
 **Exports**: All model classes for backward-compatible imports
 ```python
-from models import QCRecord, QCTask, QCConfig, MetricQC, QCDecision, QCStatusRow
+from models import QCRecord, QCTask, QCConfig, RatingConfig, MetricQC, QCDecision, QCStatusRow
 ```
 
 ---
@@ -260,6 +265,14 @@ It builds grid montages from loaded images and applies sizing/layout rules for d
 **Responsibility**: Export QC results to standardized formats
 
 It serializes QC records for export, including duplicate-handling logic when requested.
+Multi-facet ratings are written as one row per facet.
+
+---
+
+#### `utils/path_helpers.py`
+**Responsibility**: Consistent naming of output files
+
+It builds the names of status and checkpoint files from the rater, pipeline and QC task.
 
 ---
 
@@ -274,15 +287,15 @@ It serializes QC records for export, including duplicate-handling logic when req
 
 ### Complete QC Session Workflow
 
-```mermaid
-flowchart TD
+```{mermaid}
+flowchart LR
     startNode([Start]) --> appInit[app.py initializes SessionManager]
     appInit --> landingCheck{Landing page complete?}
 
     landingCheck -- No --> landingView[views/landing_page.py]
     landingView --> collectRater[Collect rater info]
     collectRater --> selectPanels[Select panels and optional defaults]
-    selectPanels --> uploadPrevious[Optional CSV upload]
+    selectPanels --> uploadPrevious[Optional import of previous results]
     uploadPrevious --> landingDone[Set landing page complete]
     landingDone --> appMain[app.py main flow]
 
@@ -295,7 +308,7 @@ flowchart TD
     sidebarNav --> choosePage[User selects subject or page]
     choosePage --> collectRatings[Collect QC ratings and notes]
     collectRatings --> saveMove[Save records and move prev or next]
-    saveMove --> morePages{More cohort pages?}
+    saveMove --> morePages{More QC-record pages?}
 
     morePages -- Yes --> viewerPage
     morePages -- No --> resultsView[views/congratulations_page.py]
@@ -304,121 +317,41 @@ flowchart TD
 ```
 
 ### Module Interaction Diagram
-```mermaid
+
+```{mermaid}
 flowchart TD
-        app[app.py]
-        main[main.py]
-        landing[views/landing_page.py]
-        viewer[components/qc_viewer.py]
-        sidebar[views/sidebar_cohort_nav.py]
-        congrats[views/congratulations_page.py]
-        session[managers/session_manager.py]
-        niivue[managers/niivue_viewer_manager.py]
-        layout[managers/panel_layout_manager.py]
-        config[utils/config.py]
-        loaders[utils/data_loaders.py]
-        export[utils/export.py]
-        models[models/qc_models.py]
-        constants[constants.py]
+    app[app.py]
+    main[main.py]
+    landing[views/landing_page.py]
+    viewer[components/qc_viewer.py]
+    sidebar[views/sidebar_cohort_nav.py]
+    congrats[views/congratulations_page.py]
+    session[managers/session_manager.py]
+    niivue[managers/niivue_viewer_manager.py]
+    layout[managers/panel_layout_manager.py]
+    config[utils/config.py]
+    loaders[utils/data_loaders.py]
+    export[utils/export.py]
+    models[models/qc_models.py]
+    constants[constants.py]
 
-        main --> app
-        app --> landing
-        app --> viewer
-        app --> sidebar
-        app --> congrats
+    main --> app
+    app --> landing
+    app --> viewer
+    app --> sidebar
+    app --> congrats
 
-        landing --> session
-        landing --> config
-        viewer --> session
-        viewer --> niivue
-        viewer --> layout
-        viewer --> config
-        viewer --> loaders
-        viewer --> models
-        viewer --> constants
-        sidebar --> session
-        congrats --> session
-        congrats --> export
-        export --> models
+    landing --> session
+    landing --> config
+    viewer --> session
+    viewer --> niivue
+    viewer --> layout
+    viewer --> config
+    viewer --> loaders
+    viewer --> models
+    viewer --> constants
+    sidebar --> session
+    congrats --> session
+    congrats --> export
+    export --> models
 ```
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: Panel selection not persisting
-- **Check**: `SessionManager.set_panel_selection()` called after checkbox
-- **Solution**: Verify SessionManager initialization and session state patching in tests
-
-**Issue**: Niivue viewer not displaying
-- **Check**: `load_mri_data()` returns valid base_mri_image_bytes
-- **Solution**: Verify qc_config path is correct, MRI file exists
-
-**Issue**: Tests failing with "expected X to have been called"
-- **Check**: Mock setup in conftest.py
-- **Solution**: These are pre-existing Streamlit mocking issues, not regressions
-
-**Issue**: New manager method not working
-- **Check**: Is it calling `st.session_state` correctly?
-- **Solution**: Follow pattern from existing methods, use SESSION_KEYS constant
-
----
-
-## Testing Guide
-
-### Running Tests
-
-**All tests**:
-```bash
-bash run_tests.sh all
-```
-
-**Specific test file**:
-```bash
-pytest ui/tests/test_session_manager.py -v
-```
-
-**Specific test class**:
-```bash
-pytest ui/tests/test_session_manager.py::TestRaterMethods -v
-```
-
-**With coverage report**:
-```bash
-pytest ui/tests/ --cov=ui --cov-report=html
-```
-
-### Writing New Tests
-
-**Template**:
-```python
-class TestNewFeature:
-    """Tests for new feature."""
-    
-    def test_basic_functionality(self):
-        """Test basic operation."""
-        # Arrange
-        component = SomeComponent()
-        
-        # Act
-        result = component.do_something()
-        
-        # Assert
-        assert result == expected_value
-    
-    def test_edge_case(self):
-        """Test edge case behavior."""
-        # Similar structure
-```
-
-
-## References
-
-- **Streamlit Documentation**: https://docs.streamlit.io/
-- **Pytest Documentation**: https://docs.pytest.org/
-- **Python Design Patterns**: https://refactoring.guru/design-patterns
-- **Session State Management**: Streamlit docs on st.session_state
-
----
