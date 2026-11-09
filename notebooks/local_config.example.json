@@ -1,0 +1,5 @@
+{
+    "rater_config": "/data/qc-datasets/qc-raters/users_all.json",
+    "participant_list": "/data/qc-datasets/qc_participants.tsv",
+    "output_dir": null
+}
