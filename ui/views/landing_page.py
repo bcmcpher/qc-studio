@@ -415,7 +415,7 @@ def show_landing_page(
 
     # Load participant list to get total unique participants
     try:
-        participants_df = pd.read_csv(participant_list, delimiter="\t")
+        participants_df = pd.read_csv(participant_list, delimiter="\t", dtype=str, keep_default_na=False)
         raw_ids = participants_df["participant_id"].tolist()
         normalized_ids = [_normalize_participant_id(pid) for pid in raw_ids]
         total_participants_in_ds = len(set(normalized_ids))

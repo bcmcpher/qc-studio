@@ -60,6 +60,9 @@ sub-CMH0001	ses-01
 sub-CMH0001	ses-02
 ```
 
+Session labels may be written with or without the `ses-` prefix. QC-Studio adds the prefix if
+it is missing and keeps the rest of the label as written: `1` becomes `ses-1`, not `ses-01`.
+
 Otherwise, session labels must be specified via the `--session_list` flag
 (for example `--session_list ses-01,ses-02`). Each participant is then combined with each session.
 

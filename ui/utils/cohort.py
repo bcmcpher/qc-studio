@@ -18,14 +18,11 @@ def normalize_participant_id_bids(pid: str) -> str:
 
 
 def normalize_session_id_bids(sid: str) -> str:
+    """Add the ``ses-`` prefix if missing; otherwise keep the label as written."""
     s = str(sid).strip()
     if not s:
         raise ValueError("session id cannot be empty")
-    if s.startswith("ses-"):
-        return s
-    if s.isdigit():
-        return f"ses-{int(s):02d}"
-    return f"ses-{s}"
+    return s if s.startswith("ses-") else f"ses-{s}"
 
 
 def parse_session_list(raw: str | None) -> list[str] | None:

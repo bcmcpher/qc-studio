@@ -119,7 +119,7 @@ def get_cli_run_context():
                 f"No --session_list given, using sessions found in dataset: {session_ids}",
                 file=sys.stderr,
             )
-    participants_df = pd.read_csv(args.participant_list, delimiter="\t")
+    participants_df = pd.read_csv(args.participant_list, delimiter="\t", dtype=str, keep_default_na=False)
     stored_cohort = SessionManager.get_qc_cohort_order()
     if stored_cohort:
         qc_cohort = stored_cohort
