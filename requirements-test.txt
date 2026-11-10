@@ -1,12 +1,12 @@
 # Test dependencies for qc-studio
 # Install with: pip install -r requirements-test.txt
-# Note: Python 3.8+ recommended (some dependencies require it)
+# CI currently runs on Python 3.10.
 
 # Base requirements
 -r requirements.txt
 
 # Testing framework
-pytest>=3.0
+pytest>=8.0,<9.0
 
 # For compatibility with Python 3.7
 typing-extensions>=3.7
@@ -15,7 +15,13 @@ typing-extensions>=3.7
 pytest-mock>=3.0
 
 # For coverage reports
-pytest-cov>=2.10
+pytest-cov>=5.0
+
+# CI and local quality checks
+black==24.10.0
+flake8==7.3.0
+codespell==2.4.2
+pre-commit>=4.0,<5.0
 
 # Optional: For parallel test execution
 # pytest-xdist>=3.0

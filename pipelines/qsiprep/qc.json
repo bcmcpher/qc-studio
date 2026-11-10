@@ -1,0 +1,18 @@
+{
+    "seg_brainmask_qc": {
+        "display_name": "Brain mask segmentation",
+        "montage_path": "derivatives/qsiprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_seg_brainmask.svg"
+    },
+    "t1_2_mni_qc": {
+        "display_name": "T1w to MNI registration",
+        "montage_path": "derivatives/qsiprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_t1_2_mni.svg"
+    },
+    "sdc_wf_qc": {
+        "display_name": "DWI susceptibility distortion correction",
+        "montage_path": "derivatives/qsiprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_acq-multishelldir92_run-1_desc-sdc_b0.svg"
+    },
+    "coreg_wf_qc": {
+        "display_name": "DWI-T1w coregistration",
+        "montage_path": "derivatives/qsiprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_acq-multishelldir92_run-1_coreg.svg"
+    }
+}

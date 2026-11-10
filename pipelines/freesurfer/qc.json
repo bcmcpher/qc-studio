@@ -1,0 +1,24 @@
+{
+    "anat_wf_qc": {
+        "display_name": "FreeSurfer recon-all (anatomical)",
+        "base_mri_image_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-preproc_T1w.nii.gz",
+        "overlay_mri_image_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-brain_mask.nii.gz",
+        "montage_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_run-1_desc-reconall_T1w.svg",
+        "iqm_path": [
+            "derivatives/mriqc/group_T1w.tsv"
+        ]
+    },
+    "FS_preproc_workflow": {
+        "base_mri_image_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-preproc_T1w.nii.gz",
+        "overlay_mri_image_path": "",
+        "montage_path": [
+            "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_run-1_desc-reconall_T1w.svg"
+        ],
+        "iqm_path": "",
+        "rating": {
+            "type": "multi",
+            "scale": ["PASS", "FAIL", "UNCERTAIN"],
+            "facets": ["Cropped", "Aliasing", "Motion", "Susceptibility", "Ringing", "Inhomogeneity"]
+        }
+    }
+}

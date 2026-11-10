@@ -1,0 +1,25 @@
+{
+    "noddireg_od_icvf_isovf": {
+        "display_name": "Cortical surface maps (OD, ICVF, ISOVF)",
+        "montage_path": [
+            "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_icvf_mean_qc.png",
+            "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_od_mean_qc.png",
+            "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_isovf_mean_qc.png"
+        ]
+    },
+    "noddireg_parcellation_overlay": {
+        "display_name": "Parcellation alignment (3D overlay + QA mosaics)",
+        "base_mri_image_path": "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_*_space-T1w_dwiref.nii.gz",
+        "overlay_mri_image_path": "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_space-T1w_ref-dwiref_desc-4S1056Parcels_dseg.nii.gz",
+        "montage_path": [
+            "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_desc-4S1056Parcels_model-noddi_mdp-icvf_qa.png",
+            "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_desc-4S1056Parcels_model-noddi_mdp-od_qa.png"
+        ]
+    },
+    "noddireg_density": {
+        "display_name": "Tissue density distributions",
+        "montage_path": [
+            "derivatives/noddireg/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_desc-dsegtissue_model-noddi_density.png"
+        ]
+    }
+}

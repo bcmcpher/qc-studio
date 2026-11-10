@@ -51,8 +51,8 @@ Tests for utility functions:
   - Load single image
   - Handle non-existent files
 
-- **load_svg_data()**: Load SVG montage files
-  - Load valid SVG
+- **load_montage_data()**: Load 2D montage image files
+  - Load valid SVG, PNG, and JPG/JPEG files
   - Handle non-existent files
   - Handle read errors
 
@@ -178,7 +178,7 @@ The `conftest.py` file provides shared fixtures for all tests:
 - **`sample_participant_list`**: Sample participants TSV file
 - **`sample_qc_config`**: Sample QC configuration JSON
 - **`sample_qc_results_csv`**: Sample QC results CSV file
-- **`sample_svg_content`**: Sample SVG content string
+- **`sample_svg_content`**: Sample SVG content string used in montage image tests
 
 ### Data Fixtures
 - **`sample_session_state`**: Mock Streamlit session state

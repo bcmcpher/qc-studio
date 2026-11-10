@@ -1,0 +1,45 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "README.md"
+      - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "README.md"
+      - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Match the Python version used by Read the Docs (.readthedocs.yaml)
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+
+      # -n: report broken references, -W: treat warnings as errors,
+      # --keep-going: report every problem instead of stopping at the first
+      - name: Build documentation
+        run: python -m sphinx -n -W --keep-going -b html docs/source docs/_build/html

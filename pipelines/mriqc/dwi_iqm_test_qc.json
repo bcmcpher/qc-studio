@@ -1,0 +1,8 @@
+{
+    "dwi_iqm_qc": {
+        "iqm_path": [
+            "derivatives/mriqc/group_dwi.tsv",
+            "derivatives/mriqc/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/dwi/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_acq-multishelldir92_run-1_dwi.json"
+        ]
+    }
+}

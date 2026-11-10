@@ -1,0 +1,50 @@
+default_install_hook_types:
+  - pre-commit
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: debug-statements
+      - id: end-of-file-fixer
+        files: ^(ui|pipelines)/.*\.py$|^(docs/.*\.(md|py|txt|css|bat)|docs/Makefile|README\.md|\.readthedocs\.yaml|\.github/.*\.ya?ml|\.flake8|\.codespellrc|pyproject\.toml|requirements.*\.txt|\.pre-commit-config\.yaml)$
+      - id: trailing-whitespace
+        files: ^(ui|pipelines)/.*\.py$|^(docs/.*\.(md|py|txt|css|bat)|docs/Makefile|README\.md|\.readthedocs\.yaml|\.github/.*\.ya?ml|\.flake8|\.codespellrc|pyproject\.toml|requirements.*\.txt|\.pre-commit-config\.yaml)$
+
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 24.10.0
+    hooks:
+      - id: black
+        args:
+          - --config
+          - pyproject.toml
+        files: ^(ui|pipelines)/.*\.py$
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        args:
+          - --config
+          - .flake8
+        files: ^(ui|pipelines)/.*\.py$
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        args:
+          - --config
+          - .codespellrc
+        files: ^(README\.md|docs/|ui/|pipelines/)
+
+  - repo: local
+    hooks:
+      - id: pytest-ui
+        name: pytest ui tests
+        entry: .venv/bin/python -m pytest ui/tests -q
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,33 @@
+{
+    "anat_wf_qc": {
+        "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_T1w.nii.gz",
+        "montage_path": [
+            "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_run-1_desc-reconall_T1w.svg",
+            "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_run-1_space-MNI152NLin2009cAsym_T1w.svg"
+        ],
+        "iqm_path": [
+            "derivatives/mriqc/group_T1w.tsv",
+            "derivatives/mriqc/group_bold.tsv"
+        ],
+        "montage_max_rows": 2,
+        "montage_max_cols": 2
+    },
+    "sdc_wf_qc": {
+        "display_name": "Susceptibility distortion correction (SDC)",
+        "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/func/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_bold.nii.gz",
+        "montage_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_desc-sdc_bold.svg",
+        "iqm_path": [
+            "derivatives/mriqc/group_T1w.tsv",
+            "derivatives/mriqc/group_bold.tsv"
+        ]
+    },
+    "coreg_wf_qc": {
+        "display_name": "BOLD-T1w coregistration",
+        "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/func/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_bold.nii.gz",
+        "montage_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_desc-coreg_bold.svg",
+        "iqm_path": [
+            "derivatives/mriqc/group_T1w.tsv",
+            "derivatives/mriqc/group_bold.tsv"
+      ]
+    }
+}

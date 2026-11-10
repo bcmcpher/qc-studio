@@ -1,0 +1,30 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: QC-Studio
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Nikhil
+    family-names: Bhagwat
+    affiliation: McGill University
+    orcid: 'https://orcid.org/0000-0001-6073-7141'
+  - given-names: Niusha
+    family-names: Mirhakimi
+  - given-names: Ghazaleh
+    family-names: Mohammadalinejad
+    affiliation: CAMH
+  - given-names: Thomas
+    family-names: Tan
+    affiliation: Stanford University
+  - given-names: Patrick
+    family-names: Sadil
+    affiliation: Johns Hopkins University
+  - given-names: Manon
+    family-names: Heffernan
+    affiliation: Institut du Cerveau - ICM
+repository-code: 'https://github.com/nipoppy/qc-studio'
+license: MIT

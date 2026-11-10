@@ -1,0 +1,29 @@
+[flake8]
+max-line-length = 150
+
+# Black owns formatting. Keep the initial CI lint gate focused on syntax
+# errors, undefined names, and other correctness problems.
+select =
+    E9,
+    F63,
+    F7,
+    F82
+
+exclude =
+    .git,
+    __pycache__,
+    */.pytest_cache,
+    build,
+    dist,
+    .venv,
+    venv,
+    env,
+    .env,
+    .eggs,
+    output,
+    docs,
+    assets,
+    sample_data,
+    sandbox,
+    tums_mci,
+    ui/node_modules

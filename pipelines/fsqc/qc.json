@@ -1,58 +1,137 @@
 {
-    "FS_volume_wf_qc": {
-        "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_T1w.nii.gz",
+    "FS_preproc_workflow": {
+        "base_mri_image_path": "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-preproc_T1w.nii.gz",
         "overlay_mri_image_path": "",
-        "svg_montage_path": [
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/screenshots/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]].png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/skullstrip/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]].png"
+        "montage_path": [
+            "derivatives/fmriprep/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_run-1_desc-reconall_T1w.svg"
         ],
-        "iqm_path": ""
+        "iqm_path": "",
+        "rating": {
+            "type": "multi",
+            "scale": ["PASS", "FAIL", "UNCERTAIN"],
+            "facets": ["Cropped", "Aliasing", "Motion", "Susceptibility", "Ringing", "Inhomogeneity"]
+        }
     },
-    "FS_surface_wf_qc": {
-        "base_mri_image_path": "derivatives/freesurfer/7.3.2/output/[[NIPOPPY_BIDS_SESSION_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/mri/aparc+aseg.mgz",
+    "FS_volume_workflow": {
+        "base_mri_image_path": "",
         "overlay_mri_image_path": "",
-        "svg_montage_path": [
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.inflated.left.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.inflated.right.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.inflated.inferior.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.inflated.superior.png",            
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.pial.superior.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.pial.inferior.png",
+        "montage_path": [
+            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/screenshots/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]].png",
+            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/skullstrip/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]].png",
+            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hypothalamus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hypothalamus.png"
+        ],
+        "iqm_path": "",
+        "rating": {
+            "type": "multi",
+            "scale": ["PASS", "FAIL", "UNCERTAIN"],
+            "facets": [
+                "L whol thal",
+                "R whol thal",
+                "L gl pallid",
+                "R gl pallid",
+                "L putamen n",
+                "R putamen n",
+                "L caudate n",
+                "R caudate n",
+                "L accumbens",
+                "R accumbens",
+                "L ventrl DC",
+                "R ventrl DC",
+                "L hippocamp",
+                "R hippocamp",
+                "L whol amyg",
+                "R whol amyg",
+                "M brainstem",
+                "L cerebl WM",
+                "R cerebl WM",
+                "L cerebl cx",
+                "R cerebl cx"
+            ]
+        }
+    },
+    "FS_surface_workflow": {
+        "base_mri_image_path": "",
+        "overlay_mri_image_path": "",
+        "montage_path": [                    
             "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.pial.left.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.pial.right.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.inflated.left.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.inflated.right.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.inflated.inferior.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.inflated.superior.png",            
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.pial.superior.png",
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.pial.inferior.png",
+            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/lh.pial.right.png",                      
             "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.pial.left.png",
             "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/surfaces/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/rh.pial.right.png"
         ],
-        "iqm_path": ""        
-    },
-    "FS_hypothalamus_wf_qc": {
-        "base_mri_image_path": "derivatives/freesurfer/7.3.2/output/[[NIPOPPY_BIDS_SESSION_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/mri/aparc+aseg.mgz",
-        "overlay_mri_image_path": "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hypothalamus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hypothalamus.mgz",
-        "svg_montage_path": [
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hypothalamus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hypothalamus.png"
-        ],
-        "iqm_path": ""        
-    },
-    "FS_left_hippocampus_wf_qc": {   
-        "base_mri_image_path": "derivatives/freesurfer/7.3.2/output/[[NIPOPPY_BIDS_SESSION_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/mri/aparc+aseg.mgz",
-        "overlay_mri_image_path": "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hippocampus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hippocampus-lh.mgz",
-        "svg_montage_path": [
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hippocampus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hippocampus-left.png"
-        ],
-        "iqm_path": ""        
-    },
-    "FS_right_hippocampus_wf_qc": {   
-        "base_mri_image_path": "derivatives/freesurfer/7.3.2/output/[[NIPOPPY_BIDS_SESSION_ID]]/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/mri/aparc+aseg.mgz",
-        "overlay_mri_image_path": "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hippocampus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hippocampus-rh.mgz",
-        "svg_montage_path": [
-            "derivatives/fsqc/2.1.4/output/[[NIPOPPY_BIDS_SESSION_ID]]/hippocampus/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/hippocampus-right.png"
-        ],
-        "iqm_path": ""        
+        "iqm_path": "",
+        "rating": {
+            "type": "multi",
+            "scale": ["PASS", "FAIL", "UNCERTAIN"],
+            "facets": [
+                "L temp pole",
+                "R temp pole",
+                "L frnt pole",
+                "R frnt pole",
+                "L banks sts",
+                "R banks sts",
+                "L supr temp",
+                "R supr temp",
+                "L midl temp",
+                "R midl temp",
+                "L precentrl",
+                "R precentrl",
+                "L postcentr",
+                "R postcentr",
+                "L supramarg",
+                "R supramarg",
+                "L supr pari",
+                "R supr pari",
+                "L precuneus",
+                "R precuneus",
+                "L cuneus cx",
+                "R cuneus cx",
+                "L pericalcr",
+                "R pericalcr",
+                "L lingu gyr",
+                "R lingu gyr",
+                "L supr frnt",
+                "R supr frnt",
+                "L rostr ACC",
+                "R rostr ACC",
+                "L caudl ACC",
+                "R caudl ACC",
+                "L post cing",
+                "R post cing",
+                "L isth cing",
+                "R isth cing",
+                "L med orbfr",
+                "R med orbfr",
+                "L infr temp",
+                "R infr temp",
+                "L lat occip",
+                "R lat occip",
+                "L infr pari",
+                "R infr pari",
+                "L caudl MFG",
+                "R caudl MFG",
+                "L rostr MFG",
+                "R rostr MFG",
+                "L lat orbfr",
+                "R lat orbfr",
+                "L pars orbt",
+                "R pars orbt",
+                "L pars tria",
+                "R pars tria",
+                "L pars oper",
+                "R pars oper",
+                "L insula cx",
+                "R insula cx",
+                "L trns temp",
+                "R trns temp",
+                "L entorhinl",
+                "R entorhinl",
+                "L paracentr",
+                "R paracentr",
+                "L fusif gyr",
+                "R fusif gyr",
+                "L parahippo",
+                "R parahippo"
+            ]
+        }        
     }
 }

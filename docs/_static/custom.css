@@ -1,0 +1,26 @@
+/*
+ * Style tweaks
+ */
+
+/* Keep long shell commands docs readable on narrow viewports */
+div.highlight-bash pre,
+div.highlight-sh pre,
+div.highlight-console pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+pre.mermaid {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+body pre.mermaid > svg {
+    display: block;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    margin: 0 auto;
+}

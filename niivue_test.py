@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 from niivue_component import niivue_viewer
+
 # from niivue_component import niivue_component
 
 
@@ -30,37 +31,23 @@ def niivue_viewer_from_path(baseimage_fpath: str, overlay_fpath: str, height: in
         overlay_bytes = f.read()
 
     niivue_viewer(
-        nifti_data=baseimage_bytes,        
+        nifti_data=baseimage_bytes,
         filename=os.path.basename(baseimage_fpath),
         height=height,
         key=key,
-        overlays=[
-        {
-            "data": overlay_bytes,
-            "name": "activation.nii.gz",
-            "colormap": "hot",
-            "opacity": 0.7
-        }
-        ],
+        overlays=[{"data": overlay_bytes, "name": "activation.nii.gz", "colormap": "hot", "opacity": 0.7}],
         view_mode="multiplanar",
         styled=True,
-        settings={
-            "crosshair": True,
-            "radiological": False,
-            "colorbar": True,
-            "interpolation": True
-        }
-        )
+        settings={"crosshair": True, "radiological": False, "colorbar": True, "interpolation": True},
+    )
 
 
-baseimage_fpath = "../sample_data/derivatives/fmriprep/23.1.3/output/sub-ED01/ses-01/anat/sub-ED01_ses-01_run-1_desc-preproc_T1w.nii.gz"
-overlay_fpath = "../sample_data/derivatives/fmriprep/23.1.3/output/sub-ED01/ses-01/anat/sub-ED01_ses-01_run-1_desc-brain_mask.nii.gz"
+# Sample BIDS anatomical (from `sample_data/bids/`, synced from Desktop shared data)
+baseimage_fpath = "../sample_data/bids/sub-CMH0001/ses-01/anat/sub-CMH0001_ses-01_run-1_T1w.nii.gz"
+overlay_fpath = baseimage_fpath
 
 try:
     niivue_viewer_from_path(baseimage_fpath, overlay_fpath, height=600, key="niivue_viewer_path")
 
 except Exception as e:
     st.error(f"Failed to load file: {e}")
-
-
-

@@ -1,0 +1,21 @@
+{
+    "atlas_coverage_qc": {
+        "display_name": "Atlas coverage (T1w orthogonal slices)",
+        "montage_path": [
+            "derivatives/xcpd/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-Axial*_T1w.png",
+            "derivatives/xcpd/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-Coronal*_T1w.png",
+            "derivatives/xcpd/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_desc-Sagittal*_T1w.png"
+        ]
+    },
+    "coreg_wf_qc": {
+        "display_name": "BOLD bbregister / template alignment",
+        "montage_path": "derivatives/xcpd/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_space-MNI152NLin2009cAsym_desc-bbregister_bold.svg"
+    },
+    "denoised_bold_qc": {
+        "display_name": "Pre- vs post-processing carpet plots",
+        "montage_path": [
+            "derivatives/xcpd/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_space-fsLR_desc-preprocESQC_bold.svg",
+            "derivatives/xcpd/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/figures/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_task-*_run-*_space-fsLR_desc-postprocESQC_bold.svg"
+        ]
+    }
+}

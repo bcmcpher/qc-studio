@@ -3,11 +3,21 @@
 #  - streamlit: UI
 #  - pydantic: data validation (RootModel, model_validate_json requires v2)
 #  - pandas: dataframes / CSV handling
+#  - plotly: IQM distribution violin plots
+#  - requests: reference IQM Parquet download
+#  - Pillow: SVG/raster montage image handling
+#  - pyarrow: pandas' parquet engine for cached reference IQM data
 # The file also pins a few common peer deps that pandas/streamlit use.
 
 pydantic>=2.0
-streamlit>=1.20
+streamlit>=1.56  # st.iframe
 pandas>=1.4
 numpy>=1.23
 typing-extensions>=3.7
 cairosvg>=2.9.0
+python-dotenv>=1.0
+nibabel>=5.0
+plotly>=5.24
+requests>=2.32
+Pillow>=11.0
+pyarrow>=19.0
