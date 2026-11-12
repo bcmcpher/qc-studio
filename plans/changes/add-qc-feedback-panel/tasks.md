@@ -10,9 +10,10 @@
 - [ ] 2.1 Load `feedback.json` through `ui/evidence_bundle/feedback.py` with `@st.cache_data` keyed on path and mtime
 - [ ] 2.2 Render decision, confidence, summary, reasons, flagged metrics, image observations, model id, timestamp, "advisory" label; HTML disabled
 - [ ] 2.3 Handle missing file, unreadable file, `schema_valid` false, and non-empty `consistency_errors`
-- [ ] 2.4 Warn when `bundle.json` is newer than `feedback.json`
-- [ ] 2.5 In `after_rating` mode, show a placeholder until the scan has a non-default rating
-- [ ] 2.6 Tests with fixture files and `mock_streamlit` from `ui/tests/conftest.py`
+- [ ] 2.4 Show "No AI support for this contrast at this time" for status `skipped_unsupported`, and "Interpreted using <context_suffix> metric context" for `fallback` bundles
+- [ ] 2.5 Warn when `bundle.json` is newer than `feedback.json`
+- [ ] 2.6 In `after_rating` mode, show a placeholder until the scan has a non-default rating
+- [ ] 2.7 Tests with fixture files and `mock_streamlit` from `ui/tests/conftest.py`
 
 ## 3. Feedback rating and export
 

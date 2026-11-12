@@ -86,21 +86,62 @@ expected value. Deviations SHALL appear in `bundle.json`, `PACKAGE.md` and a pro
 - **WHEN** two scans differ in TR by less than the rounding step
 - **THEN** no deviation is recorded
 
-### Requirement: Supported structural contrasts
+### Requirement: Structural metric context
 
-The system SHALL support the structural suffixes `T1w` and `T2w` through one structural
-context file with per-suffix overrides. In the `T2w` context, `wm2max` SHALL be
-`context_dependent`. Other structural suffixes SHALL be rejected with an error.
+The system SHALL provide metric context for the structural suffixes `T1w` and `T2w` through
+one structural context file with per-suffix overrides. In the `T2w` context, `wm2max` SHALL be
+`context_dependent`.
 
 #### Scenario: T2w override
 
 - **WHEN** the context for `T2w` is loaded
-- **THEN** `wm2max` has direction `context_dependent` and all other structural IQMs match the `T1w` context
+- **THEN** `wm2max` has direction `context_dependent` and all other structural IQMs keep the `T1w` direction
 
-#### Scenario: Unsupported suffix
+### Requirement: Contrast support tiers
 
-- **WHEN** a bundle is requested for a `FLAIR` scan
-- **THEN** export fails for that scan with an error naming the suffix
+The system SHALL record each bundle's `suffix`, `context_suffix` and `support` tier, and SHALL
+NOT reject a scan because of its contrast. Suffixes with their own context SHALL be
+`supported`. Suffixes in the fallback map SHALL be `fallback`: they use the mapped suffix's
+context, get no reference percentiles, and treat the forced set of contrast-sensitive metrics
+as `context_dependent`. Other suffixes SHALL be `unsupported`: their bundle holds IQMs,
+metadata, views and project percentiles, with every metric `context_dependent`. Stratification
+SHALL always use the actual `suffix`. A user-supplied map SHALL replace the default map.
+
+#### Scenario: FLAIR uses T2w context
+
+- **WHEN** a `FLAIR` scan is exported with the default map
+- **THEN** its bundle has `support` `fallback` and `context_suffix` `T2w`
+- **AND** `snr_wm` keeps direction `lower_worse`
+
+#### Scenario: Contrast-sensitive metric not flagged
+
+- **WHEN** a `FLAIR` scan has an extreme `wm2max` value
+- **THEN** `wm2max` is `context_dependent` and has no flags
+
+#### Scenario: No reference for fallback
+
+- **WHEN** a `FLAIR` scan is exported
+- **THEN** its metrics have no reference percentiles and the bundle records why
+
+#### Scenario: Stratified by actual contrast
+
+- **WHEN** a study contains `T2w` and `FLAIR` scans
+- **THEN** a `FLAIR` scan's project stratum holds only `FLAIR` scans
+
+#### Scenario: Unmapped contrast
+
+- **WHEN** a `PDw` scan is exported with the default map
+- **THEN** a bundle is written with `support` `unsupported` and no flags
+
+#### Scenario: User map
+
+- **WHEN** the export runs with a map that sends `PDw` to `T1w`
+- **THEN** the `PDw` bundle has `support` `fallback` and `context_suffix` `T1w`
+
+#### Scenario: Tier stated in the prompt
+
+- **WHEN** a `fallback` bundle is rendered to `PACKAGE.md`
+- **THEN** the text states the context suffix that was used
 
 ### Requirement: Per-metric statistical context
 
@@ -202,3 +243,9 @@ QC when a `*_qc_status.tsv` is given.
 
 - **WHEN** a `*_qc_status.tsv` with a rating for the scan is given
 - **THEN** the bundle includes that rating and its notes
+
+#### Scenario: One scan fails
+
+- **WHEN** one scan's image cannot be read
+- **THEN** `acquisition_summary.tsv` records the error for that scan
+- **AND** bundles for the other scans are written and the CLI exits with status 0

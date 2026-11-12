@@ -105,3 +105,19 @@ per-bundle errors.
 
 - **WHEN** the adapter raises an error for one bundle
 - **THEN** that bundle's `feedback.json` records the error and the other bundles are processed
+
+### Requirement: Contrast support respected
+
+The batch CLI SHALL NOT send a bundle with `support` `unsupported` to a model, and SHALL write
+a `feedback.json` with status `skipped_unsupported` for it. Every `feedback.json` SHALL record
+the bundle's `support` and `context_suffix`.
+
+#### Scenario: Unsupported bundle skipped
+
+- **WHEN** the batch CLI reaches a `PDw` bundle with `support` `unsupported`
+- **THEN** no request is sent and `feedback.json` has status `skipped_unsupported`
+
+#### Scenario: Fallback bundle sent
+
+- **WHEN** the batch CLI reaches a `FLAIR` bundle with `support` `fallback`
+- **THEN** the adapter is called and `feedback.json` records `context_suffix` `T2w`

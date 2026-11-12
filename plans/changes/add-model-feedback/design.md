@@ -46,6 +46,9 @@ Sandbox state:
   models.
 - **Deterministic settings where available.** `temperature=0` for Claude, greedy decoding for
   local models. Record settings in the metadata.
+- **Respect the bundle's support tier.** `unsupported` bundles are never sent; the CLI writes
+  a `skipped_unsupported` result so the panel can say why there is no feedback. `fallback`
+  bundles are sent; `PACKAGE.md` already states the context suffix used.
 - **Model ids are arguments.** Defaults live in each adapter; the CLI and env var override.
 - **Cloud models are a deployment option.** Not only a benchmark. The data-use
   acknowledgement flag stays, so each deployment makes the choice explicitly.

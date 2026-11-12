@@ -12,8 +12,9 @@
 - [x] 1.3 Tests: round-trip a bundle through JSON; reject an unknown `direction_of_concern`
 - [ ] 1.4 Replace `AcquisitionMetadata` with grouped, allowlisted fields: `scanner`, `sequence`, `geometry`, `provenance` (see design); rename `EvidenceBundle.modality` to `suffix` (BIDS suffix: `T1w`, `T2w`, `bold`, `dwi`)
 - [ ] 1.5 Add `ProtocolSignature` and `AcquisitionDeviation` models; add `protocol_signature` and `acquisition_deviations` to the bundle; record the signature fields used for the project stratum and the reference filter
-- [ ] 1.6 Structural context: rename `iqms/t1w.json` to `iqms/anat.json`; add `iqms/t2w.json` holding only overrides (`wm2max` → `context_dependent`, caveat that the range is T1w-derived; caveats on `tpm_overlap_*`, `icvs_*`, `rpve_*`); loader merges base + overrides by suffix; unsupported suffixes raise an error
-- [ ] 1.7 Tests: allowlist drops identifying sidecar fields; T1w and T2w contexts load; the T2w override applies; `FLAIR` is rejected
+- [ ] 1.6 Structural context: rename `iqms/t1w.json` to `iqms/anat.json`; add `iqms/t2w.json` holding only overrides (`wm2max` → `context_dependent`, caveat that the range is T1w-derived; caveats on `tpm_overlap_*`, `icvs_*`, `rpve_*`); loader merges base + overrides by suffix
+- [ ] 1.7 Contrast support tiers: add `context_suffix` and `support` (`supported`, `fallback`, `unsupported`) to the bundle; add the fallback map (`FLAIR`→`T2w`, `T2starw`→`T2w`; `PDw` unmapped) and the forced `context_dependent` set (`wm2max`, `cjv`, `tpm_overlap_*`, `icvs_*`, `rpve_*`) to `constants.py`; allow a user map to override the default; validators: `unsupported` bundles carry no flags, `fallback` bundles carry no reference percentiles
+- [ ] 1.8 Tests: allowlist drops identifying sidecar fields; T1w and T2w contexts load; the T2w override applies; `FLAIR` resolves to `T2w` context with the forced set `context_dependent`; `PDw` resolves to `unsupported`; a user map overrides the default
 
 ## 2. Statistics — `ui/evidence_bundle/stats.py` and `acquisition.py`
 
@@ -22,11 +23,11 @@
 - [ ] 2.3 Build the protocol signature with the rounding in `constants.py`
 - [ ] 2.4 Acquisition check: compare each signature field with the project's modal value for the same suffix (and site when known); record deviations
 - [ ] 2.5 Write robust project statistics (median, MAD, empirical percentile) within the signature stratum; drop signature fields in the fixed fallback order below the minimum stratum size; never drop `suffix`, `MRAcquisitionType` or `MagneticFieldStrength`
-- [ ] 2.6 Get reference percentiles through `utils.reference_data.filter_reference_iqm`, extended to the signature fields that the reference data holds (result of 2.1); drop the duplicate sandbox filter `filter_reference_by_metadata` and record that in the commit
+- [ ] 2.6 Get reference percentiles through `utils.reference_data.filter_reference_iqm`, extended to the signature fields that the reference data holds (result of 2.1); skip the reference for `fallback` and `unsupported` bundles and record why; drop the duplicate sandbox filter `filter_reference_by_metadata` and record that in the commit
 - [ ] 2.7 Write direction-aware flags with thresholds in `ui/evidence_bundle/constants.py`, including two-sided flags for `outside_range`
 - [ ] 2.8 Assign the context category (`scan`, `protocol`, `project`, `normal`)
 - [ ] 2.9 Write the robust Mahalanobis outlier score in numpy, with shrinkage covariance and top contributors; do not add scikit-learn
-- [ ] 2.10 Tests on synthetic data: signature rounding; one off-protocol scan (TR changed) reported as a deviation and excluded from the others' stratum; fallback order; T1w and T2w never mixed; known percentiles; both flag directions and `outside_range`; all four categories; an injected outlier ranked first
+- [ ] 2.10 Tests on synthetic data: signature rounding; one off-protocol scan (TR changed) reported as a deviation and excluded from the others' stratum; fallback order; T1w and T2w never mixed; a FLAIR scan stratified only with FLAIR scans and given no reference percentiles; an `unsupported` scan gets percentiles but no flags; known percentiles; both flag directions and `outside_range`; all four categories; an injected outlier ranked first
 
 ## 3. Rendering — `ui/evidence_bundle/render.py`
 
@@ -46,8 +47,9 @@
 - [ ] 5.1 Build bundles from `--dataset_dir`, `--participant_list`, `--qc_json`, `--qc_task` and `--out_dir`; reuse `utils.cohort` and `utils.config.parse_qc_config` placeholder substitution
 - [ ] 5.2 Use the `iqm_path` group TSVs as the project distribution; read per-scan MRIQC JSON for `bids_meta`
 - [ ] 5.3 Merge in the rater's QC from a `*_qc_status.tsv`, if one is given
-- [ ] 5.4 Write `bundle.json`, `views/` and `PACKAGE.md`; port `render_markdown_template` from `sandbox/qc_package.py`; `PACKAGE.md` states acquisition deviations and the stratum used
-- [ ] 5.5 Write a project-level `acquisition_summary.tsv` (one row per scan: signature fields and deviations) beside the bundles
-- [ ] 5.6 Add a CLI entry point (`python ui/evidence_bundle/export.py …`); a UI export button is out of scope
-- [ ] 5.7 Tests: export on a `tmp_path` copy of `sample_data/`; the bundle validates against the schema; no identifying sidecar field appears in any output
-- [ ] 5.8 Docs: one section in `docs/source/guides/` that shows the CLI and explains the acquisition check
+- [ ] 5.4 Write `bundle.json`, `views/` and `PACKAGE.md`; port `render_markdown_template` from `sandbox/qc_package.py`; `PACKAGE.md` states acquisition deviations, the stratum used, and the support tier (for example "interpreted using T2w metric context")
+- [ ] 5.5 Write a project-level `acquisition_summary.tsv` (one row per scan: signature fields, deviations, `support`, `context_suffix`, export status) beside the bundles
+- [ ] 5.6 Make per-scan errors non-fatal: record the error in `acquisition_summary.tsv` and continue; exit non-zero only if no bundle was written
+- [ ] 5.7 Add a CLI entry point (`python ui/evidence_bundle/export.py …`) with `--contrast_map` for a user fallback map; a UI export button is out of scope
+- [ ] 5.8 Tests: export on a `tmp_path` copy of `sample_data/`; the bundle validates against the schema; no identifying sidecar field appears in any output; one unreadable scan does not stop the export
+- [ ] 5.9 Docs: one section in `docs/source/guides/` that shows the CLI and explains the acquisition check and the contrast support tiers

@@ -60,6 +60,9 @@ Review page layout (`ui/components/qc_viewer.py`):
 - **Validation status visible.** If `schema_valid` is false the panel shows only "invalid
   feedback" and no feedback rating control; if `consistency_errors` is non-empty it shows the
   feedback with a warning listing them.
+- **Support tier visible.** A `skipped_unsupported` result shows "No AI support for this
+  contrast at this time" and no rating control. A `fallback` result shows the context suffix
+  used. Scan rating is unaffected in both cases.
 - **Separate component module.** `ui/components/feedback_viewer.py`, mirroring
   `iqm_viewer.py`, so `qc_viewer.py` gains only a branch.
 - **Cached load.** `@st.cache_data` keyed on path and mtime, like the IQM tables.

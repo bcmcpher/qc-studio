@@ -105,6 +105,17 @@ file is missing, unreadable, schema-invalid or inconsistent.
 - **WHEN** `consistency_errors` is not empty
 - **THEN** the panel shows the feedback with a warning listing the errors
 
+#### Scenario: Unsupported contrast
+
+- **WHEN** `feedback.json` has status `skipped_unsupported`
+- **THEN** the panel says there is no AI support for this contrast at this time
+- **AND** offers no feedback rating control
+
+#### Scenario: Fallback context
+
+- **WHEN** the feedback comes from a bundle with `support` `fallback` and `context_suffix` `T2w`
+- **THEN** the panel states that the feedback was interpreted using T2w metric context
+
 #### Scenario: Stale feedback
 
 - **WHEN** the scan's `bundle.json` is newer than its `feedback.json`

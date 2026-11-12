@@ -1,7 +1,7 @@
 ## 1. Feedback schema and validation — `ui/evidence_bundle/feedback.py`
 
 - [ ] 1.1 Write `QCFeedback` from sandbox `QCDecision`; add optional `image_observations`
-- [ ] 1.2 Write `FeedbackResult`: model id, adapter name, settings, prompt hash, bundle schema version, timestamp, raw reply, `schema_valid`, `consistency_errors`, parsed feedback
+- [ ] 1.2 Write `FeedbackResult`: `status` (`ok`, `error`, `skipped_unsupported`), model id, adapter name, settings, prompt hash, bundle schema version, bundle `support` and `context_suffix`, timestamp, raw reply, `schema_valid`, `consistency_errors`, parsed feedback
 - [ ] 1.3 Write `check_consistency(feedback, bundle)`: flagged metrics ⊆ bundle flags, each flagged metric named in a reason, reason count within limits, follow-up present when decision is not `pass`
 - [ ] 1.4 Write `load_feedback(path)` / `write_feedback(path, result)`
 - [ ] 1.5 Tests: valid reply passes; each consistency rule fails on its own; invalid JSON stored with `schema_valid=False`
@@ -33,4 +33,6 @@
 - [ ] 5.1 Walk a bundle tree; run one adapter per invocation; write `feedback.json` beside each `bundle.json`
 - [ ] 5.2 Skip bundles that already have feedback from the same model and prompt hash unless `--overwrite`
 - [ ] 5.3 Catch adapter errors per bundle; record them in `feedback.json`; continue
-- [ ] 5.4 Update `sandbox/README.md` and `sandbox/requirements-experiments.txt`
+- [ ] 5.4 Skip bundles with `support` `unsupported`; write a `feedback.json` with status `skipped_unsupported` and no model call
+- [ ] 5.5 Tests: an unsupported bundle is skipped without calling the adapter; a fallback bundle is sent and its result records `support` and `context_suffix`
+- [ ] 5.6 Update `sandbox/README.md` and `sandbox/requirements-experiments.txt`

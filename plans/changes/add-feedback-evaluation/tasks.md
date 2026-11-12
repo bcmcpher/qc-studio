@@ -17,7 +17,8 @@
 
 - [ ] 3.1 Compute schema validity, consistency validity, agreement with labels (with and without `uncertain`), false-confirmation rate on controls
 - [ ] 3.2 Report rater agreement where the dataset has several raters
-- [ ] 3.3 Write a Markdown report with sample size, seed, model ids and prompt hashes
+- [ ] 3.3 Report `supported` and `fallback` bundles separately, per contrast
+- [ ] 3.4 Write a Markdown report with sample size, seed, model ids and prompt hashes
 
 ## 4. Decisions back to other changes
 

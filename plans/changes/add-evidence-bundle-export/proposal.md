@@ -23,7 +23,11 @@ QC result in its own right, in the spirit of the ReproNim/ReproIn protocol check
   are compared only with like scans.
 - An acquisition check that reports signature fields that differ from the study's usual value.
 - Structural support for `T1w` and `T2w` through one structural context with per-suffix
-  overrides. Other structural contrasts (FLAIR, PDw, …) are out of scope.
+  overrides.
+- Three contrast support tiers. Mapped contrasts (default `FLAIR`→`T2w`, `T2starw`→`T2w`) use
+  a related context with safeguards; unmapped contrasts (for example `PDw`) still get a bundle,
+  marked as having no AI support. No scan is rejected.
+- Per-scan export errors are recorded and do not stop the export.
 - Robust project statistics, reference percentiles, direction-aware flags, context category
   and a multivariate outlier score.
 - Deterministic 2D rendering: core views at fixed template-space positions, plus targeted views

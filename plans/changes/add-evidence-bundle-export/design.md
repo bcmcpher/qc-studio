@@ -32,7 +32,8 @@ Metadata sources found in `sample_data/`:
 
 - Calling any model (`add-model-feedback`).
 - Choosing the final view set (`add-feedback-evaluation`).
-- Structural contrasts other than `T1w` and `T2w` (FLAIR, PDw, neuromelanin, …).
+- Contrast-specific metric context for structural contrasts other than `T1w` and `T2w` (FLAIR,
+  PDw, neuromelanin, …). They get the `fallback` or `unsupported` tier instead.
 - A study protocol file with expected values and tolerances; the acquisition check uses the
   project's own modal values. A protocol file can follow in a later change.
 - A UI export button.
@@ -75,8 +76,24 @@ Metadata sources found in `sample_data/`:
 - **Structural context: one base, per-suffix overrides.** `iqms/anat.json` (renamed from
   `t1w.json`) holds the structural IQMs. `iqms/t2w.json` holds only overrides. In the first
   pass the only override is `wm2max`, which becomes `context_dependent`, because its
-  `[0.6, 0.8]` range is T1w-derived. `T1w` uses the base unchanged. Other suffixes raise an
-  error until they get their own override file.
+  `[0.6, 0.8]` range is T1w-derived. `T1w` uses the base unchanged.
+- **Three contrast support tiers; no scan is rejected.** The bundle records `suffix` (the
+  actual contrast), `context_suffix` (whose metric context is used) and `support`:
+
+  | `support` | Suffixes | Behaviour |
+  |---|---|---|
+  | `supported` | `T1w`, `T2w` | Own context; project and reference percentiles. |
+  | `fallback` | mapped (default `FLAIR`→`T2w`, `T2starw`→`T2w`) | Context of the mapped suffix. Project-only percentiles. The forced set (`wm2max`, `cjv`, `tpm_overlap_*`, `icvs_*`, `rpve_*`) becomes `context_dependent`. |
+  | `unsupported` | anything unmapped (for example `PDw`) | IQMs, metadata, views and percentiles are written. All metrics are `context_dependent`, so there are no flags. Adapters skip the bundle. |
+
+  The fallback changes only how metrics are interpreted. Stratification always uses the actual
+  `suffix`, so a FLAIR scan is compared only with FLAIR scans. Fallback scans get no reference
+  percentiles, because no MRIQC reference exists for them and a T2w reference would turn a
+  protocol difference into a scan finding. `PDw` is unmapped because its contrast is close to
+  neither T1w nor T2w. The default map lives in `constants.py`; `--contrast_map` replaces it.
+- **Export never stops on one scan.** Per-scan errors are recorded in
+  `acquisition_summary.tsv`. Bundle export is independent of rating in the UI, so a failed or
+  unsupported bundle never blocks QC.
 - **`suffix` replaces `modality` in the bundle.** It is the BIDS value and a required stratum
   key, so `T1w` and `T2w` are never compared with each other.
 - **Robust statistics in numpy.** Median/MAD, empirical percentiles, Mahalanobis distance with
@@ -100,6 +117,9 @@ Metadata sources found in `sample_data/`:
   documented.
 - [T2w segmentation-based IQMs (`tpm_overlap_*`, `icvs_*`, `rpve_*`) are less tested than for
   T1w] → keep their T1w direction, add a caveat in the override file, revisit after evaluation.
+- [A fallback context misleads on a contrast-specific metric outside the forced set] → the
+  tier is shown in `PACKAGE.md`, the summary and the feedback panel; evaluation reports
+  fallback scans separately; the forced set can grow.
 - [PNG bytes differ across Pillow versions] → test determinism within one environment only.
 - [`sample_data/` is tiny] → statistics tests use synthetic data.
 
