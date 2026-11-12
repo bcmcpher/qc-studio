@@ -6,9 +6,10 @@
 
 ## 1. Bundle schema — `ui/evidence_bundle/models.py`
 
-- [ ] 1.1 Write pydantic models `MetricEvidence`, `OutlierScore`, `ViewRef`, `RaterQC` and `EvidenceBundle`, with a `schema_version` field
-- [ ] 1.2 Port `direction_of_concern` and metric context from `sandbox/iqms_context/*.json` to `ui/evidence_bundle/iqms/`; rename `tw1.json` to `t1w.json`
-- [ ] 1.3 Tests: round-trip a bundle through JSON; reject an unknown `direction_of_concern`
+- [x] 1.1 Write pydantic models `MetricEvidence`, `OutlierScore`, `ViewRef`, `RaterQC` and `EvidenceBundle`, with a `schema_version` field
+- [x] 1.2 Port `direction_of_concern` and metric context from `sandbox/iqms_context/*.json` to `ui/evidence_bundle/iqms/`; rename `tw1.json` to `t1w.json`
+  - As built: copied, not moved (sandbox scripts still read the originals). Directions normalized to `higher_worse | lower_worse | outside_range | context_dependent | not_quality_metric`: `target_range`/`normative_range` → `outside_range`; `inu_*` split into `inu_med` (`outside_range`) and `inu_range` (`higher_worse`); DWI `expected_lower_bound` → `expected_range: [lo, null]`. Loader and pattern lookup in `ui/evidence_bundle/context.py`.
+- [x] 1.3 Tests: round-trip a bundle through JSON; reject an unknown `direction_of_concern`
 
 ## 2. Statistics — `ui/evidence_bundle/stats.py`
 

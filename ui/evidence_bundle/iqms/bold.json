@@ -1,0 +1,224 @@
+{
+  "schema_version": "0.2",
+  "modality": "bold",
+  "source_documents": [
+    {
+      "name": "MRIQC functional IQMs",
+      "url": "https://mriqc.readthedocs.io/en/stable/iqms/bold.html"
+    },
+    {
+      "name": "MRIQC structural IQMs for shared spatial definitions",
+      "url": "https://mriqc.readthedocs.io/en/stable/iqms/t1w.html"
+    }
+  ],
+  "metrics": {
+    "dvars_nstd": {
+      "display_name": "Non-standardized DVARS",
+      "category": "temporal_variability",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate larger frame-to-frame BOLD signal changes across the brain",
+      "evidence_strength": "high",
+      "caveats": [
+        "interpret with framewise displacement and task/rest context"
+      ]
+    },
+    "dvars_std": {
+      "display_name": "Standardized DVARS",
+      "category": "temporal_variability",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate abnormal temporal signal change after standardization",
+      "evidence_strength": "high",
+      "caveats": [
+        "interpret with dvars_nstd, fd_mean, fd_num, and visual report"
+      ]
+    },
+    "dvars_vstd": {
+      "display_name": "Voxelwise Standardized DVARS",
+      "category": "temporal_variability",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate abnormal temporal signal change after voxelwise standardization",
+      "evidence_strength": "medium",
+      "caveats": [
+        "use as supportive temporal instability evidence"
+      ]
+    },
+    "fd_mean": {
+      "display_name": "Mean Framewise Displacement",
+      "category": "motion",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate greater average instantaneous head motion",
+      "evidence_strength": "high",
+      "caveats": [
+        "thresholds should be study-specific"
+      ]
+    },
+    "fd_num": {
+      "display_name": "Number of High-Motion Volumes",
+      "category": "motion",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate more timepoints above the motion threshold",
+      "evidence_strength": "high",
+      "caveats": [
+        "MRIQC uses a 0.20 mm FD threshold for this count"
+      ]
+    },
+    "fd_perc": {
+      "display_name": "Percent of High-Motion Volumes",
+      "category": "motion",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate a larger fraction of the run exceeded the motion threshold",
+      "evidence_strength": "high",
+      "caveats": [
+        "MRIQC uses a 0.20 mm FD threshold for this percentage"
+      ]
+    },
+    "gcor": {
+      "display_name": "Global Correlation",
+      "category": "temporal_correlation",
+      "direction_of_concern": "context_dependent",
+      "qc_interpretation": "unusual values may indicate broad shared temporal structure across voxels",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret in context of preprocessing, acquisition, and analysis design"
+      ]
+    },
+    "tsnr": {
+      "display_name": "Temporal Signal-to-Noise Ratio",
+      "category": "temporal_stability",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor temporal signal stability",
+      "evidence_strength": "high",
+      "caveats": [
+        "sensitive to acquisition and physiology as well as artifact"
+      ]
+    },
+    "gsr_x": {
+      "display_name": "Ghost-to-Signal Ratio X",
+      "category": "epi_ghosting",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate stronger EPI ghosting along the x phase-encoding direction",
+      "evidence_strength": "medium",
+      "caveats": [
+        "should be interpreted when phase-encoding direction is known"
+      ]
+    },
+    "gsr_y": {
+      "display_name": "Ghost-to-Signal Ratio Y",
+      "category": "epi_ghosting",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate stronger EPI ghosting along the y phase-encoding direction",
+      "evidence_strength": "medium",
+      "caveats": [
+        "should be interpreted when phase-encoding direction is known"
+      ]
+    },
+    "aor": {
+      "display_name": "AFNI Outlier Ratio",
+      "category": "temporal_outliers",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate a greater fraction of outlier voxels per fMRI volume",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with DVARS and FD"
+      ]
+    },
+    "aqi": {
+      "display_name": "AFNI Quality Index",
+      "category": "temporal_outliers",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate lower volume-wise similarity to the median fMRI volume",
+      "evidence_strength": "medium",
+      "caveats": [
+        "MRIQC describes lower values as better"
+      ]
+    },
+    "dummy": {
+      "display_name": "Detected Non-Steady-State Volumes",
+      "category": "acquisition_context",
+      "direction_of_concern": "context_dependent",
+      "qc_interpretation": "indicates the number of initial non-steady-state volumes detected",
+      "evidence_strength": "low",
+      "caveats": [
+        "not a direct image-quality failure signal by itself"
+      ]
+    }
+  },
+  "metric_patterns": {
+    "efc": {
+      "display_name": "Entropy Focus Criterion",
+      "category": "spatial_information",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate ghosting, blurring, or motion-related degradation",
+      "evidence_strength": "medium",
+      "caveats": [
+        "shared spatial metric definition from structural IQMs"
+      ]
+    },
+    "fber": {
+      "display_name": "Foreground-Background Energy Ratio",
+      "category": "spatial_information",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate weak foreground signal relative to background noise",
+      "evidence_strength": "medium",
+      "caveats": [
+        "shared spatial metric definition from structural IQMs"
+      ]
+    },
+    "fwhm_*": {
+      "display_name": "Full Width Half Maximum Smoothness",
+      "matches": [
+        "fwhm_avg",
+        "fwhm_x",
+        "fwhm_y",
+        "fwhm_z"
+      ],
+      "category": "spatial_smoothness",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate spatial blurring or reduced sharpness",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with acquisition resolution and preprocessing context"
+      ]
+    },
+    "snr": {
+      "display_name": "Signal-to-Noise Ratio",
+      "category": "spatial_information",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor BOLD image signal quality",
+      "evidence_strength": "medium",
+      "caveats": [
+        "not the same as temporal SNR"
+      ]
+    },
+    "summary_*": {
+      "display_name": "Summary Statistics",
+      "category": "distribution_summary",
+      "direction_of_concern": "context_dependent",
+      "qc_interpretation": "describes image intensity distributions; useful for derived checks but weak as direct model evidence",
+      "evidence_strength": "low",
+      "caveats": [
+        "usually only send if flagged or summarized"
+      ]
+    },
+    "size_*": {
+      "display_name": "Image Matrix Size",
+      "category": "image_geometry",
+      "direction_of_concern": "not_quality_metric",
+      "qc_interpretation": "describes image dimensions; useful for comparability but not direct artifact evidence",
+      "evidence_strength": "none",
+      "caveats": [
+        "do not use as QC failure evidence by itself"
+      ]
+    },
+    "spacing_*": {
+      "display_name": "Voxel Spacing",
+      "category": "image_geometry",
+      "direction_of_concern": "not_quality_metric",
+      "qc_interpretation": "describes image resolution; useful for comparability but not direct artifact evidence",
+      "evidence_strength": "none",
+      "caveats": [
+        "do not use as QC failure evidence by itself"
+      ]
+    }
+  }
+}

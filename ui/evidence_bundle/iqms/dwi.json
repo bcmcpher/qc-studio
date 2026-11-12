@@ -1,0 +1,193 @@
+{
+  "schema_version": "0.2",
+  "modality": "dwi",
+  "source_documents": [
+    {
+      "name": "MRIQC diffusion IQMs",
+      "url": "https://mriqc.readthedocs.io/en/stable/iqms/dwi.html"
+    },
+    {
+      "name": "MRIQC structural IQMs for shared spatial definitions",
+      "url": "https://mriqc.readthedocs.io/en/stable/iqms/t1w.html"
+    }
+  ],
+  "metrics": {
+    "piesno_sigma": {
+      "display_name": "PIESNO Noise Sigma",
+      "category": "diffusion_noise",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate higher estimated noise in raw diffusion MRI data",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with SNR metrics and acquisition protocol"
+      ]
+    },
+    "cc_snr": {
+      "display_name": "Corpus Callosum Signal-to-Noise Ratio",
+      "category": "diffusion_snr",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor diffusion signal quality in the corpus callosum",
+      "evidence_strength": "high",
+      "caveats": [
+        "MRIQC can estimate worst-case and best-case SNR by diffusion shell"
+      ]
+    },
+    "fa_nan": {
+      "display_name": "FA NaN Fraction",
+      "category": "diffusion_model_validity",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate more not-a-number FA values within the brain mask",
+      "evidence_strength": "high",
+      "caveats": [
+        "suggests model or data validity problems but needs visual and pipeline context"
+      ]
+    },
+    "fa_degenerate": {
+      "display_name": "Degenerate FA Fraction",
+      "category": "diffusion_model_validity",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate more invalid FA values outside the expected range",
+      "evidence_strength": "high",
+      "caveats": [
+        "can reflect severe data or model-fitting problems"
+      ]
+    },
+    "ndc": {
+      "display_name": "Neighboring DWI Correlation",
+      "category": "diffusion_consistency",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor diffusion image quality or low consistency between neighboring diffusion-weighted volumes",
+      "evidence_strength": "high",
+      "caveats": [
+        "MRIQC notes values below about 0.4 can indicate poor quality"
+      ],
+      "expected_range": [
+        0.4,
+        null
+      ]
+    },
+    "spikes_ppm": {
+      "display_name": "Global Spike Fraction",
+      "category": "diffusion_spikes",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate more voxels classified as signal spikes",
+      "evidence_strength": "high",
+      "caveats": [
+        "inspect slice-wise spike metrics when available"
+      ]
+    }
+  },
+  "metric_patterns": {
+    "cc_snr_*": {
+      "display_name": "Corpus Callosum Signal-to-Noise Ratio by Shell",
+      "category": "diffusion_snr",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor shell-specific diffusion signal quality in the corpus callosum",
+      "evidence_strength": "high",
+      "caveats": [
+        "track whether value is worst-case or best-case SNR"
+      ]
+    },
+    "noise_b0_*": {
+      "display_name": "B0 Noise Estimate",
+      "matches": [
+        "noise_b0_25",
+        "noise_b0_50",
+        "noise_b0_75"
+      ],
+      "category": "diffusion_noise",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate greater estimated noise in b=0 volumes",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with PIESNO sigma and SNR"
+      ]
+    },
+    "spikes_*": {
+      "display_name": "Slice-wise Spike Fraction",
+      "category": "diffusion_spikes",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values indicate more slice-wise signal spiking",
+      "evidence_strength": "high",
+      "caveats": [
+        "identify affected axis, slice, or volume when available"
+      ]
+    },
+    "efc": {
+      "display_name": "Entropy Focus Criterion",
+      "category": "spatial_information",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate ghosting, blurring, or motion-related degradation",
+      "evidence_strength": "medium",
+      "caveats": [
+        "shared spatial metric definition from structural IQMs"
+      ]
+    },
+    "fber": {
+      "display_name": "Foreground-Background Energy Ratio",
+      "category": "spatial_information",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate weak foreground signal relative to background noise",
+      "evidence_strength": "medium",
+      "caveats": [
+        "shared spatial metric definition from structural IQMs"
+      ]
+    },
+    "fwhm_*": {
+      "display_name": "Full Width Half Maximum Smoothness",
+      "matches": [
+        "fwhm_avg",
+        "fwhm_x",
+        "fwhm_y",
+        "fwhm_z"
+      ],
+      "category": "spatial_smoothness",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate spatial blurring or reduced sharpness",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with acquisition resolution and preprocessing context"
+      ]
+    },
+    "snr": {
+      "display_name": "Signal-to-Noise Ratio",
+      "category": "spatial_information",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor diffusion image signal quality",
+      "evidence_strength": "medium",
+      "caveats": [
+        "prefer diffusion-specific SNR metrics when available"
+      ]
+    },
+    "summary_*": {
+      "display_name": "Summary Statistics",
+      "category": "distribution_summary",
+      "direction_of_concern": "context_dependent",
+      "qc_interpretation": "describes image intensity distributions; useful for derived checks but weak as direct model evidence",
+      "evidence_strength": "low",
+      "caveats": [
+        "usually only send if flagged or summarized"
+      ]
+    },
+    "size_*": {
+      "display_name": "Image Matrix Size",
+      "category": "image_geometry",
+      "direction_of_concern": "not_quality_metric",
+      "qc_interpretation": "describes image dimensions; useful for comparability but not direct artifact evidence",
+      "evidence_strength": "none",
+      "caveats": [
+        "do not use as QC failure evidence by itself"
+      ]
+    },
+    "spacing_*": {
+      "display_name": "Voxel Spacing",
+      "category": "image_geometry",
+      "direction_of_concern": "not_quality_metric",
+      "qc_interpretation": "describes image resolution; useful for comparability but not direct artifact evidence",
+      "evidence_strength": "none",
+      "caveats": [
+        "do not use as QC failure evidence by itself"
+      ]
+    }
+  }
+}

@@ -1,0 +1,256 @@
+{
+  "schema_version": "0.2",
+  "modality": "T1w",
+  "source_documents": [
+    {
+      "name": "MRIQC structural IQMs",
+      "url": "https://mriqc.readthedocs.io/en/stable/iqms/t1w.html"
+    },
+    {
+      "name": "NiPreps QC Book IQM interpretability",
+      "url": "https://www.nipreps.org/qc-book/auto-qc/iqms_interpretability.html"
+    }
+  ],
+  "metrics": {
+    "cjv": {
+      "display_name": "Coefficient of Joint Variation",
+      "category": "noise_and_tissue_contrast",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate reduced gray-white matter separability, heavy head motion, or intensity non-uniformity artifacts",
+      "evidence_strength": "medium",
+      "caveats": [
+        "not specific to one artifact type",
+        "interpret with CNR, SNR, EFC, and visual report"
+      ]
+    },
+    "cnr": {
+      "display_name": "Contrast-to-Noise Ratio",
+      "category": "noise_and_tissue_contrast",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor gray-white matter contrast or increased noise",
+      "evidence_strength": "medium",
+      "caveats": [
+        "depends on tissue segmentation quality"
+      ]
+    },
+    "efc": {
+      "display_name": "Entropy Focus Criterion",
+      "category": "information_theory",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate ghosting, blurring, or motion-related degradation",
+      "evidence_strength": "medium",
+      "caveats": [
+        "not specific to motion by itself",
+        "interpret with SNR, FWHM, CJV, and visual report"
+      ]
+    },
+    "fber": {
+      "display_name": "Foreground-Background Energy Ratio",
+      "category": "information_theory",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate weak foreground signal relative to background noise",
+      "evidence_strength": "medium",
+      "caveats": [
+        "special values can occur when background signal is absent or post-processed"
+      ]
+    },
+    "qi_1": {
+      "display_name": "Mortamet Quality Index 1",
+      "category": "artifact_detection",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate artifactual intensity voxels in the background region",
+      "evidence_strength": "medium",
+      "caveats": [
+        "near-zero is expected for clean background",
+        "negative or special values may indicate missing background mask context"
+      ]
+    },
+    "qi_2": {
+      "display_name": "Mortamet Quality Index 2",
+      "category": "artifact_detection",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate abnormal background noise structure after detected artifacts are removed",
+      "evidence_strength": "low",
+      "caveats": [
+        "less directly interpretable than QI1"
+      ]
+    },
+    "wm2max": {
+      "display_name": "White Matter to Maximum Intensity Ratio",
+      "category": "artifact_detection",
+      "direction_of_concern": "outside_range",
+      "expected_range": [
+        0.6,
+        0.8
+      ],
+      "qc_interpretation": "values outside the expected range may indicate abnormal high-intensity tails from vessels, fat, or other hyperintense signal",
+      "evidence_strength": "medium",
+      "caveats": [
+        "treat as supportive evidence, not a standalone failure criterion"
+      ]
+    },
+    "inu_med": {
+      "display_name": "Intensity Non-Uniformity Median",
+      "category": "bias_field",
+      "direction_of_concern": "outside_range",
+      "qc_interpretation": "values further from 1 may indicate RF bias-field or intensity inhomogeneity",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with CJV and visual intensity shading"
+      ]
+    },
+    "inu_range": {
+      "display_name": "Intensity Non-Uniformity Range",
+      "category": "bias_field",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "a wider bias-field range may indicate RF bias-field or intensity inhomogeneity",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with CJV and visual intensity shading"
+      ]
+    }
+  },
+  "metric_patterns": {
+    "snr_*": {
+      "display_name": "Signal-to-Noise Ratio",
+      "matches": [
+        "snr_csf",
+        "snr_gm",
+        "snr_wm",
+        "snr_total"
+      ],
+      "category": "noise_and_tissue_contrast",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor tissue-specific or overall signal quality and can support assessment of motion-related degradation",
+      "evidence_strength": "high",
+      "caveats": [
+        "the QC book found SNR-derived metrics informative for motion in a T1w motion dataset",
+        "interpret by tissue and with visual evidence"
+      ]
+    },
+    "snrd_*": {
+      "display_name": "Dietrich Signal-to-Noise Ratio",
+      "matches": [
+        "snrd_csf",
+        "snrd_gm",
+        "snrd_wm",
+        "snrd_total"
+      ],
+      "category": "noise_and_tissue_contrast",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poor signal quality relative to background air noise",
+      "evidence_strength": "medium",
+      "caveats": [
+        "depends on valid air/background estimation"
+      ]
+    },
+    "fwhm_*": {
+      "display_name": "Full Width Half Maximum Smoothness",
+      "matches": [
+        "fwhm_avg",
+        "fwhm_x",
+        "fwhm_y",
+        "fwhm_z"
+      ],
+      "category": "sharpness_blur",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate a blurrier or less spatially sharp image",
+      "evidence_strength": "medium",
+      "caveats": [
+        "interpret with acquisition resolution and preprocessing context"
+      ]
+    },
+    "rpve_*": {
+      "display_name": "Residual Partial Volume Error",
+      "matches": [
+        "rpve_csf",
+        "rpve_gm",
+        "rpve_wm"
+      ],
+      "category": "segmentation_quality",
+      "direction_of_concern": "higher_worse",
+      "qc_interpretation": "higher values may indicate greater partial-volume uncertainty or poorer tissue segmentation",
+      "evidence_strength": "low",
+      "caveats": [
+        "weak standalone artifact evidence",
+        "depends on segmentation quality"
+      ]
+    },
+    "icvs_*": {
+      "display_name": "Intracranial Volume Fractions",
+      "matches": [
+        "icvs_csf",
+        "icvs_gm",
+        "icvs_wm"
+      ],
+      "category": "anatomical_context",
+      "direction_of_concern": "outside_range",
+      "qc_interpretation": "unusual tissue fractions may provide anatomical or segmentation context but are weak standalone QC evidence",
+      "evidence_strength": "low",
+      "caveats": [
+        "do not treat as direct artifact evidence without reference distribution"
+      ]
+    },
+    "tpm_overlap_*": {
+      "display_name": "Template Tissue Probability Map Overlap",
+      "matches": [
+        "tpm_overlap_csf",
+        "tpm_overlap_gm",
+        "tpm_overlap_wm"
+      ],
+      "category": "registration_segmentation_quality",
+      "direction_of_concern": "lower_worse",
+      "qc_interpretation": "lower values may indicate poorer tissue alignment or segmentation consistency with the template",
+      "evidence_strength": "low",
+      "caveats": [
+        "can reflect anatomy, registration, or segmentation rather than raw image quality alone"
+      ]
+    },
+    "summary_*": {
+      "display_name": "Tissue or Background Summary Statistics",
+      "matches": [
+        "summary_bg_*",
+        "summary_csf_*",
+        "summary_gm_*",
+        "summary_wm_*"
+      ],
+      "category": "distribution_summary",
+      "direction_of_concern": "context_dependent",
+      "qc_interpretation": "describes intensity distributions for tissue or background compartments; useful for derived checks but weak as direct model evidence",
+      "evidence_strength": "low",
+      "caveats": [
+        "usually do not send all summary fields to the model unless specifically flagged"
+      ]
+    },
+    "size_*": {
+      "display_name": "Image Matrix Size",
+      "matches": [
+        "size_x",
+        "size_y",
+        "size_z"
+      ],
+      "category": "image_geometry",
+      "direction_of_concern": "not_quality_metric",
+      "qc_interpretation": "describes image dimensions; useful for comparability but not direct artifact evidence",
+      "evidence_strength": "none",
+      "caveats": [
+        "do not use as QC failure evidence by itself"
+      ]
+    },
+    "spacing_*": {
+      "display_name": "Voxel Spacing",
+      "matches": [
+        "spacing_x",
+        "spacing_y",
+        "spacing_z"
+      ],
+      "category": "image_geometry",
+      "direction_of_concern": "not_quality_metric",
+      "qc_interpretation": "describes image resolution; useful for comparability but not direct artifact evidence",
+      "evidence_strength": "none",
+      "caveats": [
+        "do not use as QC failure evidence by itself"
+      ]
+    }
+  }
+}
