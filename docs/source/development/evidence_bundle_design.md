@@ -30,6 +30,8 @@ image-aware LLM reads the bundle and returns structured feedback on the scan.
 | Project distribution | The IQMs of all scans in the current dataset, split by site or scanner. |
 | Reference distribution | MRIQC Web API IQMs, filtered to scans with comparable acquisition metadata. |
 | Outlier score | One multivariate score of how unusual a scan's IQMs are, with the metrics that drive it. |
+| Protocol signature | The rounded acquisition fields (suffix, acquisition type, field strength, manufacturer, repetition, echo and inversion times, flip angle, voxel size) that define which scans are comparable. |
+| Acquisition deviation | A protocol-signature field whose value differs from the study's usual value for that suffix. |
 | Core view | A rendered 2D view that every scan gets, at fixed template-space positions. |
 | Targeted view | A rendered 2D view that a rule adds when a specific flag is present. |
 | Model adapter | Code that sends a bundle to one model and validates the reply. |
