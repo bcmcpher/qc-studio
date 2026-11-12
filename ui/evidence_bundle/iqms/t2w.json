@@ -1,0 +1,31 @@
+{
+  "schema_version": "0.2",
+  "modality": "T2w",
+  "base": "anat",
+  "metrics": {
+    "wm2max": {
+      "direction_of_concern": "context_dependent",
+      "expected_range": null,
+      "add_caveats": [
+        "the expected range 0.6-0.8 is T1w-derived and does not apply to T2w images"
+      ]
+    }
+  },
+  "metric_patterns": {
+    "tpm_overlap_*": {
+      "add_caveats": [
+        "the MRIQC segmentation is less validated on T2w than on T1w images"
+      ]
+    },
+    "icvs_*": {
+      "add_caveats": [
+        "the MRIQC segmentation is less validated on T2w than on T1w images"
+      ]
+    },
+    "rpve_*": {
+      "add_caveats": [
+        "the MRIQC segmentation is less validated on T2w than on T1w images"
+      ]
+    }
+  }
+}

@@ -5,7 +5,7 @@ metrics with statistical context, a multivariate outlier score, rendered views a
 rater's QC. See ``docs/source/development/evidence_bundle_design.md``.
 """
 
-from typing import Literal, Optional, Sequence
+from typing import Any, Literal, Mapping, Optional, Sequence, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -36,6 +36,24 @@ Plane = Literal["axial", "coronal", "sagittal"]
 PlacementMethod = Literal["mni", "bbox_fraction"]
 """How slice positions were chosen: fixed MNI coordinates, or brain-mask bounding-box fractions."""
 
+SupportTier = Literal["supported", "fallback", "unsupported"]
+"""Whether the scan's suffix has its own metric context, uses a mapped one, or has none."""
+
+SignatureField = Literal[
+    "suffix",
+    "MRAcquisitionType",
+    "MagneticFieldStrength",
+    "Manufacturer",
+    "RepetitionTime",
+    "EchoTime",
+    "InversionTime",
+    "FlipAngle",
+    "VoxelSize",
+]
+"""Fields of the protocol signature, named as in the BIDS sidecar."""
+
+SignatureValue = Union[str, float, tuple[float, float, float], None]
+
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -55,7 +73,7 @@ def context_category_for(flags: Sequence[str]) -> ContextCategory:
 
 
 class MetricContext(_Strict):
-    """Interpretation of one IQM or IQM pattern, from ``iqms/<modality>.json``."""
+    """Interpretation of one IQM or IQM pattern, from an ``iqms/`` file."""
 
     display_name: str
     category: str
@@ -68,7 +86,7 @@ class MetricContext(_Strict):
 
 
 class MetricContextFile(_Strict):
-    """One ``iqms/<modality>.json`` file."""
+    """One base ``iqms/<name>.json`` file, or the result of merging overrides into one."""
 
     schema_version: str
     modality: str
@@ -77,11 +95,39 @@ class MetricContextFile(_Strict):
     metric_patterns: dict[str, MetricContext] = Field(default_factory=dict)
 
 
+class MetricContextOverride(_Strict):
+    """Changes to one base entry. Only fields that are set replace the base value."""
+
+    direction_of_concern: Optional[DirectionOfConcern] = None
+    expected_range: Optional[tuple[Optional[float], Optional[float]]] = None
+    evidence_strength: Optional[EvidenceStrength] = None
+    qc_interpretation: Optional[str] = None
+    add_caveats: list[str] = Field(default_factory=list)
+
+    def apply(self, base: MetricContext) -> MetricContext:
+        update = self.model_dump(exclude_unset=True, exclude={"add_caveats"})
+        update["caveats"] = [*base.caveats, *self.add_caveats]
+        return MetricContext.model_validate({**base.model_dump(), **update})
+
+
+class MetricContextOverrideFile(_Strict):
+    """An ``iqms/<suffix>.json`` file that changes entries of a base file."""
+
+    schema_version: str
+    modality: str
+    base: str
+    metrics: dict[str, MetricContextOverride] = Field(default_factory=dict)
+    metric_patterns: dict[str, MetricContextOverride] = Field(default_factory=dict)
+
+
 class DistributionContext(_Strict):
     """A distribution a scan is compared against, and how it was selected."""
 
     filters: dict[str, str] = Field(default_factory=dict)
+    signature_fields: list[SignatureField] = Field(default_factory=list)
     n: int = Field(ge=0)
+    note: Optional[str] = None
+    """Why the distribution is reduced or unused, for example a stratum below the minimum size."""
 
 
 class MetricEvidence(_Strict):
@@ -148,13 +194,112 @@ class ViewRef(_Strict):
         return self
 
 
-class AcquisitionMetadata(_Strict):
-    """Selected fields from the BIDS sidecar."""
+class ScannerMetadata(_Strict):
+    """Allowlisted scanner fields from the BIDS sidecar."""
 
-    manufacturer: Optional[str] = None
-    manufacturers_model_name: Optional[str] = None
-    magnetic_field_strength: Optional[float] = None
+    Manufacturer: Optional[str] = None
+    ManufacturersModelName: Optional[str] = None
+    MagneticFieldStrength: Optional[float] = None
+    SoftwareVersions: Optional[str] = None
+    ReceiveCoilName: Optional[str] = None
+    """``ReceiveCoilName``, or ``CoilString`` when the sidecar has only that."""
+
+
+class SequenceMetadata(_Strict):
+    """Allowlisted sequence fields from the BIDS sidecar. Times in seconds, angles in degrees."""
+
+    MRAcquisitionType: Optional[str] = None
+    ScanningSequence: Union[str, list[str], None] = None
+    SequenceVariant: Union[str, list[str], None] = None
+    RepetitionTime: Optional[float] = None
+    EchoTime: Optional[float] = None
+    InversionTime: Optional[float] = None
+    FlipAngle: Optional[float] = None
+    PixelBandwidth: Optional[float] = None
+    ParallelReductionFactorInPlane: Optional[float] = None
+    PartialFourier: Optional[float] = None
+
+
+class GeometryMetadata(_Strict):
+    """Image geometry, from the NIfTI header except where noted."""
+
+    shape: Optional[tuple[int, ...]] = None
+    voxel_size: Optional[tuple[float, float, float]] = None
+    """Spatial voxel size in mm."""
+    orientation: Optional[tuple[str, str, str]] = None
+    """Axis codes, for example ``("R", "A", "S")``."""
+    field_of_view: Optional[tuple[float, float, float]] = None
+    """Spatial extent in mm."""
+    SliceThickness: Optional[float] = None
+    """From the sidecar."""
+    SpacingBetweenSlices: Optional[float] = None
+    """From the sidecar."""
+
+
+class ProvenanceMetadata(_Strict):
+    """Where the IQMs came from, from the MRIQC JSON ``provenance``."""
+
+    mriqc_version: Optional[str] = None
+    md5sum: Optional[str] = None
+
+
+class AcquisitionMetadata(_Strict):
+    """Allowlisted acquisition metadata. Only the fields of these models are ever exported."""
+
     site: Optional[str] = None
+    """From the participant list or configuration, never from ``InstitutionName``."""
+    scanner: ScannerMetadata = Field(default_factory=ScannerMetadata)
+    sequence: SequenceMetadata = Field(default_factory=SequenceMetadata)
+    geometry: GeometryMetadata = Field(default_factory=GeometryMetadata)
+    provenance: ProvenanceMetadata = Field(default_factory=ProvenanceMetadata)
+
+    @classmethod
+    def from_sidecar(cls, sidecar: Mapping[str, Any], **groups: Any) -> "AcquisitionMetadata":
+        """Build the scanner and sequence groups from a sidecar, keeping only allowlisted keys.
+
+        ``groups`` passes ``site``, ``geometry`` or ``provenance``. ``SliceThickness`` and
+        ``SpacingBetweenSlices`` are taken from the sidecar unless ``geometry`` sets them.
+        """
+        scanner = {k: sidecar[k] for k in ScannerMetadata.model_fields if k in sidecar}
+        if "ReceiveCoilName" not in scanner and "CoilString" in sidecar:
+            scanner["ReceiveCoilName"] = sidecar["CoilString"]
+        sequence = {k: sidecar[k] for k in SequenceMetadata.model_fields if k in sidecar}
+        geometry = groups.pop("geometry", GeometryMetadata())
+        if not isinstance(geometry, GeometryMetadata):
+            geometry = GeometryMetadata.model_validate(geometry)
+        from_sidecar = {k: sidecar[k] for k in ("SliceThickness", "SpacingBetweenSlices") if k in sidecar}
+        geometry = geometry.model_copy(update={k: v for k, v in from_sidecar.items() if getattr(geometry, k) is None})
+        return cls(scanner=ScannerMetadata(**scanner), sequence=SequenceMetadata(**sequence), geometry=geometry, **groups)
+
+
+class ProtocolSignature(_Strict):
+    """Rounded acquisition parameters that define which scans are comparable.
+
+    Units as in the sidecar (seconds, degrees); voxel size in mm. A missing field is null and
+    is part of the signature.
+    """
+
+    suffix: str
+    MRAcquisitionType: Optional[str] = None
+    MagneticFieldStrength: Optional[float] = None
+    Manufacturer: Optional[str] = None
+    RepetitionTime: Optional[float] = None
+    EchoTime: Optional[float] = None
+    InversionTime: Optional[float] = None
+    FlipAngle: Optional[float] = None
+    VoxelSize: Optional[tuple[float, float, float]] = None
+
+
+class AcquisitionDeviation(_Strict):
+    """A signature field whose value differs from the project's modal value for the suffix."""
+
+    field: SignatureField
+    value: SignatureValue
+    expected: SignatureValue
+    share: float = Field(ge=0, le=1)
+    """Share of compared scans that have the expected value."""
+    n: int = Field(ge=1)
+    """Number of scans compared."""
 
 
 class RaterQC(_Strict):
@@ -172,13 +317,18 @@ class EvidenceBundle(_Strict):
 
     schema_version: str = SCHEMA_VERSION
     qcstudio_version: Optional[str] = None
-    mriqc_version: Optional[str] = None
     participant_id: str
     session_id: str
     pipeline: str
     qc_task: str
-    modality: str
+    suffix: str
+    """BIDS suffix of the scan (``T1w``, ``T2w``, ``FLAIR``, ``bold``, ...)."""
+    support: SupportTier
+    context_suffix: Optional[str]
+    """Suffix whose metric context is used; null when ``unsupported``."""
     acquisition: AcquisitionMetadata = Field(default_factory=AcquisitionMetadata)
+    protocol_signature: Optional[ProtocolSignature] = None
+    acquisition_deviations: list[AcquisitionDeviation] = Field(default_factory=list)
     project: DistributionContext
     reference: Optional[DistributionContext] = None
     metrics: list[MetricEvidence]
@@ -198,6 +348,26 @@ class EvidenceBundle(_Strict):
                 raise ValueError(f"outlier score uses metrics not in the bundle: {unknown}")
         if self.reference is None and any("reference_outlier" in m.flags for m in self.metrics):
             raise ValueError("reference_outlier flags need a reference distribution")
+        return self
+
+    @model_validator(mode="after")
+    def _check_support(self):
+        if self.protocol_signature is not None and self.protocol_signature.suffix != self.suffix:
+            raise ValueError(f"protocol signature suffix '{self.protocol_signature.suffix}' is not the bundle suffix '{self.suffix}'")
+        if self.support == "supported" and self.context_suffix != self.suffix:
+            raise ValueError(f"a supported bundle uses its own context, not '{self.context_suffix}'")
+        if self.support == "fallback":
+            if self.context_suffix is None or self.context_suffix == self.suffix:
+                raise ValueError("a fallback bundle needs a context suffix other than its own")
+            with_reference = [m.name for m in self.metrics if m.reference_percentile is not None or "reference_outlier" in m.flags]
+            if with_reference:
+                raise ValueError(f"a fallback bundle has no reference percentiles: {with_reference}")
+        if self.support == "unsupported":
+            if self.context_suffix is not None:
+                raise ValueError("an unsupported bundle has no context suffix")
+            interpreted = [m.name for m in self.metrics if m.direction_of_concern != "context_dependent"]
+            if interpreted:
+                raise ValueError(f"every metric of an unsupported bundle is context_dependent: {interpreted}")
         return self
 
     def flagged_metrics(self) -> list[str]:

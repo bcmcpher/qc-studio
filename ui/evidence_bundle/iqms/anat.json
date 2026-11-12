@@ -1,6 +1,6 @@
 {
   "schema_version": "0.2",
-  "modality": "T1w",
+  "modality": "anat",
   "source_documents": [
     {
       "name": "MRIQC structural IQMs",
