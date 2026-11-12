@@ -18,7 +18,8 @@
 - [ ] 3.2 Attach `views/*.png` as image content blocks; add an IQMs-only variant that sends no images
 - [ ] 3.3 Request structured output through a tool whose input schema is the `QCFeedback` JSON schema; `temperature=0`
 - [ ] 3.4 Refuse to send images unless a data-use acknowledgement flag is set
-- [ ] 3.5 Tests with a mocked client: images attached in the image variant, absent in the IQMs-only variant, refusal without the flag
+- [ ] 3.5 Accept an optional `base_url` (`--base_url`, `ANTHROPIC_BASE_URL`); pass it to the client; record it in the metadata
+- [ ] 3.6 Tests with a mocked client: images attached in the image variant, absent in the IQMs-only variant, refusal without the flag, `base_url` passed through
 
 ## 4. LLaVA-OneVision adapter — `sandbox/model_adapters/llava.py`
 

@@ -22,5 +22,5 @@
 ## 4. Decisions back to other changes
 
 - [ ] 4.1 Recommend the core view count; update `add-evidence-bundle-export` task 3.3 note
-- [ ] 4.2 Recommend a default adapter and whether the feedback panel ships enabled
+- [ ] 4.2 Recommend a default adapter and whether the feedback panel is offered to all projects
 - [ ] 4.3 Draft the #40 comment for the user to post

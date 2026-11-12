@@ -47,6 +47,13 @@ Sandbox state:
 - **Deterministic settings where available.** `temperature=0` for Claude, greedy decoding for
   local models. Record settings in the metadata.
 - **Model ids are arguments.** Defaults live in each adapter; the CLI and env var override.
+- **Cloud models are a deployment option.** Not only a benchmark. The data-use
+  acknowledgement flag stays, so each deployment makes the choice explicitly.
+- **Endpoint is an argument.** The Claude adapter accepts an optional `base_url` (CLI
+  `--base_url`, env `ANTHROPIC_BASE_URL`) and passes it to the client, so a compatible proxy
+  or institutional endpoint works without code changes. The URL is recorded in the
+  `FeedbackResult` metadata. Adapters for other API families (for example OpenAI-compatible
+  servers for local models) are a later change.
 
 ## Risks / Trade-offs
 
@@ -61,7 +68,7 @@ Sandbox state:
 
 ## Open Questions
 
-- Cloud model: deployment option or benchmark only?
-- Do adapters move into `ui/` after evaluation, or into a separate optional package?
+- Do adapters move into `ui/` after evaluation, or into a separate optional package? Deferred
+  until `add-feedback-evaluation` reports.
 - Reason-count limits: keep 4–7 from the sandbox, or derive from the number of bundle flags?
 - Which LLaVA-OneVision size is the reference local model (4B now, 8B needs more compute)?

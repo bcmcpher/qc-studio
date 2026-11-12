@@ -3,7 +3,8 @@
 The sandbox has three scans from one subject. That cannot separate the design options in
 [#40](https://github.com/nipoppy/qc-studio/issues/40): which views to send, whether targeted
 views prime false confirmations, and which model to use. A labelled evaluation is needed
-before any model output is shown to raters (`add-qc-feedback-panel`).
+before model feedback is offered to projects beyond the current study. Within the study,
+rater judgements of the feedback (`add-qc-feedback-panel`) are a second source of evidence.
 
 ## What Changes
 
@@ -31,6 +32,6 @@ before any model output is shown to raters (`add-qc-feedback-panel`).
 - New code: `sandbox/evaluation/` (`download.py`, `run_eval.py`, `report.py`).
 - Uses the export CLI from `add-evidence-bundle-export` and adapters from `add-model-feedback`.
 - Results decide the core view count (task 3.3 of `add-evidence-bundle-export`), the default
-  adapter, and whether the panel in `add-qc-feedback-panel` ships enabled.
+  adapter, and whether the panel in `add-qc-feedback-panel` is offered to all projects.
 - Compute: cloud API cost for Claude runs; GPU time for local models (not available on the
   dev machine).

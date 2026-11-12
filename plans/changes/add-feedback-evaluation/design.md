@@ -46,4 +46,6 @@ braindr ratings for HBN. Labels are per scan (accept / doubtful / exclude, or a 
 
 - Which labelled dataset is available to the group, and under what terms?
 - Budget for cloud runs; where 8B+ local models run.
-- Agreement threshold that would justify enabling the panel by default.
+- Agreement threshold that would justify offering the panel to all projects.
+- Whether to add the in-study feedback ratings (`feedback_rating` in `*_qc_status.tsv`) to the
+  report once enough exist.

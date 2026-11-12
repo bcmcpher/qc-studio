@@ -86,6 +86,16 @@ explicit data-use acknowledgement.
 - **WHEN** the Claude adapter runs in image mode without the acknowledgement
 - **THEN** it exits with an error before any request is sent
 
+### Requirement: Configurable cloud endpoint
+
+A cloud adapter SHALL accept an optional endpoint URL and SHALL record the endpoint used in the
+feedback metadata.
+
+#### Scenario: Custom endpoint
+
+- **WHEN** the Claude adapter runs with `--base_url https://proxy.example.org`
+- **THEN** the request goes to that endpoint and `feedback.json` records it
+
 ### Requirement: Batch feedback CLI
 
 The system SHALL provide a CLI that runs one adapter over a tree of bundles and continues past
