@@ -70,3 +70,34 @@ DEFAULT_PROJECT_Z_THRESHOLD = 3.0
 DEFAULT_REFERENCE_PERCENTILE_LOW = 2.5
 DEFAULT_REFERENCE_PERCENTILE_HIGH = 97.5
 """Defaults for ``models.StatsConfig``; a project can change them per export."""
+
+CORE_PLANES: tuple[str, ...] = ("axial", "coronal", "sagittal")
+"""Planes of the core views, one image each, in this order."""
+
+CORE_MNI_COORDS: dict[str, tuple[float, ...]] = {
+    "axial": (-20.0, 10.0, 40.0),
+    "coronal": (-60.0, -15.0, 20.0),
+    "sagittal": (-35.0, 0.0, 35.0),
+}
+"""Core slice positions in MNI152NLin2009cAsym mm (z, y and x), three per image.
+
+The number and positions are tuned in ``add-feedback-evaluation``.
+"""
+
+CORE_BBOX_FRACTIONS: tuple[float, ...] = (0.3, 0.5, 0.7)
+"""Core slice positions as fractions of the mask's bounding box along the plane's axis."""
+
+CORE_WINDOW_PERCENTILES: tuple[float, float] = (0.5, 99.5)
+"""Display window: these percentiles of all finite voxels of the volume."""
+
+HEAD_MASK_FRACTION = 0.1
+"""Without a mask, voxels above this fraction of the 99th percentile form the head mask."""
+
+PANEL_SIZE_PX = 256
+"""Width and height of one slice panel; the slice is fitted inside it at its physical aspect."""
+
+LABEL_HEIGHT_PX = 20
+"""Height of the text strip under the panels."""
+
+LABEL_FONT_SIZE = 12
+"""Size of Pillow's built-in font for the labels."""

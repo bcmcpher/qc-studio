@@ -198,6 +198,7 @@ class ViewRef(_Strict):
     kind: ViewKind
     plane: Plane
     slice_positions: list[float] = Field(min_length=1)
+    """MNI coordinates in mm (``mni``) or fractions of the mask bounding box (``bbox_fraction``)."""
     placement: PlacementMethod
     window_percentiles: tuple[float, float]
     rule: Optional[str] = None

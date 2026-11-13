@@ -40,10 +40,11 @@
 
 ## 3. Rendering — `ui/evidence_bundle/render.py`
 
-- [ ] 3.1 Reorient to RAS (`nibabel.as_closest_canonical`); resample display to isotropic mm so anisotropic voxels are not distorted; window with fixed whole-volume percentiles; fixed output size; draw labels with Pillow, no matplotlib
-- [ ] 3.2 Place core views at fixed MNI coordinates when a template-space image exists (fMRIPrep `space-MNI152NLin2009cAsym`); otherwise fall back to fractions of the brain-mask bounding box; record the method in `ViewRef`
-- [ ] 3.3 Render one image per plane with few slices per image (start with 3; tune in `add-feedback-evaluation`)
-- [ ] 3.4 Tests: a synthetic NIfTI gives byte-identical PNGs on two runs; orientation is correct for a non-RAS volume; an anisotropic volume renders with correct aspect; the fallback is used when no template image exists
+- [x] 3.1 Reorient to RAS (`nibabel.as_closest_canonical`); resample display to isotropic mm so anisotropic voxels are not distorted; window with fixed whole-volume percentiles; fixed output size; draw labels with Pillow, no matplotlib
+- [x] 3.2 Place core views at fixed MNI coordinates when a template-space image exists (fMRIPrep `space-MNI152NLin2009cAsym`); otherwise fall back to fractions of the brain-mask bounding box; record the method in `ViewRef`
+- [x] 3.3 Render one image per plane with few slices per image (start with 3; tune in `add-feedback-evaluation`)
+- [x] 3.4 Tests: a synthetic NIfTI gives byte-identical PNGs on two runs; orientation is correct for a non-RAS volume; an anisotropic volume renders with correct aspect; the fallback is used when no template image exists
+  - As built (2026-11-13): `render.py` (`load_volume`, `window_limits`, `mni_indices`, `bbox_indices`, `render_plane`, `render_core_views`). Each slice is resized with Pillow bilinear so one pixel covers the same mm along both axes, then centred in a 256 px panel; three panels per PNG plus a 20 px label strip (768 x 276 px). Neurological display (subject left on the left; side letters L/R or P/A on each panel). Window: 0.5th and 99.5th percentiles of all finite voxels, shared by the three planes; recorded in `ViewRef.window_percentiles`. MNI positions (mm): axial z -20/10/40, coronal y -60/-15/20, sagittal x -35/0/35; with a template image the template-space image itself is rendered. Fallback positions are fractions 0.3/0.5/0.7 of the bounding box of the brain mask, or of a threshold head mask (voxels above 10% of the 99th percentile) when no mask is given; `ViewRef.slice_positions` holds mm for `mni` and fractions for `bbox_fraction`. A 4D image is averaged over time. A mask on another grid, or an MNI coordinate outside the template image, raises `ValueError`; the exporter (section 5) decides how to recover. PNGs are written without metadata. Checked by eye on `sample_data` sub-ED01 (native T1w, native preproc + brain mask, MNI res-2). Tests: 19 in `ui/tests/test_evidence_bundle_render.py`; the aspect and reorientation tests fail when the mm scaling or `as_closest_canonical` is removed.
 
 ## 4. Targeted views — `ui/evidence_bundle/view_rules.py`
 

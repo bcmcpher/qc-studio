@@ -124,7 +124,9 @@ Metadata sources found in `sample_data/`:
 - **Pillow for rendering.** Deterministic output, no matplotlib font or backend variation.
   Display resampled to isotropic mm.
 - **Template-space slice positions with a mask-bbox fallback.** The method is recorded in
-  `ViewRef`.
+  `ViewRef`. As built, the `mni` method renders the template-space image itself. fMRIPrep's
+  `space-MNI152NLin2009cAsym_desc-preproc_T1w` is skull-stripped and often 2 mm, so it hides
+  background and scalp artefacts. Which image the exporter passes is open for section 5.
 - **`PACKAGE.md` via `str.format`.** Ported as is from `render_markdown_template`.
 
 ## Risks / Trade-offs
