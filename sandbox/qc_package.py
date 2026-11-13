@@ -258,15 +258,13 @@ def prepare_qc_data(
 
 
 def write_shared_qc_data(shared_data_dir: Path, qc_data: dict[str, Any]) -> None:
-    """Write experiment-independent processed metadata and IQM data."""
+    """Write experiment-independent processed metadata and IQM data.
+
+    Only the selected sequence and scanner fields are written. The full sidecar holds
+    identifying fields (DeviceSerialNumber, InstitutionName, ...) and is never written.
+    """
     shared_data_dir.mkdir(parents=True, exist_ok=True)
-    write_json(
-        shared_data_dir / "metadata.json",
-        {
-            "selected": qc_data["selected_metadata"],
-            "full_sidecar": qc_data["sidecar"],
-        },
-    )
+    write_json(shared_data_dir / "metadata.json", {"selected": qc_data["selected_metadata"]})
     write_json(shared_data_dir / "iqms.json", {"iqms": qc_data["enriched_iqms"]})
 
 
