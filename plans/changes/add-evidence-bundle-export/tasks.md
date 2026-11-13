@@ -26,6 +26,7 @@
 - [ ] 2.1 Check the reference parquet columns for T1w and T2w (sequence fields, voxel size) and whether `T2w.parquet` is served; record the result in `design.md`
 - [ ] 2.2 Extract acquisition metadata from the MRIQC JSON `bids_meta` and `provenance`, the BIDS sidecar, and the NIfTI header (`acquisition.py`)
 - [ ] 2.3 Build the protocol signature with the rounding in `constants.py`
+- Decision (2026-11-13): TE rounds to 0.1 ms (0.0001 s in sidecar units), not 1 ms, so the spec's 2.9 ms vs 3.5 ms deviation scenario holds. `design.md` updated.
 - [ ] 2.4 Acquisition check: compare each signature field with the project's modal value for the same suffix (and site when known); record deviations
 - [ ] 2.5 Write robust project statistics (median, MAD, empirical percentile) within the signature stratum; drop signature fields in the fixed fallback order below the minimum stratum size; never drop `suffix`, `MRAcquisitionType` or `MagneticFieldStrength`
 - [ ] 2.6 Get reference percentiles through `utils.reference_data.filter_reference_iqm`, extended to the signature fields that the reference data holds (result of 2.1); skip the reference for `fallback` and `unsupported` bundles and record why; drop the duplicate sandbox filter `filter_reference_by_metadata` and record that in the commit

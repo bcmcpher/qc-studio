@@ -59,7 +59,8 @@ Metadata sources found in `sample_data/`:
   `StationName`, `AcquisitionTime` and accession IDs are never read into the bundle.
 - **Protocol signature.** A tuple of `suffix`, `MRAcquisitionType`, `MagneticFieldStrength`,
   `Manufacturer`, `RepetitionTime`, `EchoTime`, `InversionTime`, `FlipAngle` and voxel size.
-  Times are rounded to 1 ms (TE) or 10 ms (TR, TI), voxel size to 0.1 mm, flip angle to 1°.
+  Times are rounded to 0.1 ms (TE) or 10 ms (TR, TI), voxel size to 0.1 mm, flip angle to 1°.
+  TE uses 0.1 ms because anatomical TEs are a few ms; 1 ms would merge 2.9 ms and 3.5 ms.
   Rounding constants live in `constants.py`. A missing field is part of the signature as null.
 - **Stratification by signature with a fixed fallback.** The project stratum starts with the
   full signature (plus site when known). Below the minimum stratum size, fields are dropped in
