@@ -222,8 +222,11 @@ placement method.
 
 ### Requirement: Rule-based targeted views
 
-The system SHALL add a targeted view only when a rule in the rule table fires on a bundle flag.
-A control mode SHALL add targeted views to scans with no flags.
+The system SHALL add a flag-triggered targeted view only when a rule in the rule table fires on
+a bundle flag. A control mode SHALL add the flag-triggered views to scans with no flags. When
+the QC task names an overlay image, the system SHALL add mask overlay views drawn from that
+existing file, whether or not any flag is set. Targeted views SHALL use only existing pipeline
+files.
 
 #### Scenario: Rule fires on its flag only
 
@@ -234,6 +237,11 @@ A control mode SHALL add targeted views to scans with no flags.
 
 - **WHEN** control mode is on and the scan has no flags
 - **THEN** targeted views are added and marked as controls
+
+#### Scenario: Mask overlay
+
+- **WHEN** the QC task sets `overlay_mri_image_path` and the scan has no flags
+- **THEN** mask overlay views are added, not marked as controls
 
 ### Requirement: Bundle export CLI
 

@@ -21,6 +21,7 @@ from evidence_bundle.render import (
     fit_size,
     load_volume,
     mni_indices,
+    prepare_scene,
     render_core_views,
     to_volume,
     window_limits,
@@ -48,6 +49,10 @@ def _save(data: np.ndarray, affine: np.ndarray, path: Path) -> Path:
     return path
 
 
+def _core(image, out, **kwargs):
+    return render_core_views(prepare_scene(image, **kwargs), out)
+
+
 def _ras_image(tmp_path: Path, zooms=(1.0, 1.0, 1.0), name="ras.nii.gz") -> Path:
     return _save(_head(), np.diag([*zooms, 1.0]), tmp_path / name)
 
@@ -64,8 +69,8 @@ def _bright_bbox(png: Path, panel: int) -> tuple[int, int, int, int]:
 class TestDeterminism:
     def test_two_runs_give_identical_bytes(self, tmp_path):
         image = _ras_image(tmp_path)
-        render_core_views(image, tmp_path / "a")
-        render_core_views(image, tmp_path / "b")
+        _core(image, tmp_path / "a")
+        _core(image, tmp_path / "b")
         for plane in CORE_PLANES:
             name = f"views/core_{plane}.png"
             assert (tmp_path / "a" / name).read_bytes() == (tmp_path / "b" / name).read_bytes()
@@ -74,12 +79,12 @@ class TestDeterminism:
         small = _save(_head((20, 30, 16)), np.diag([2.0, 1.0, 3.0, 1.0]), tmp_path / "s.nii.gz")
         large = _save(_head((80, 90, 70)), np.eye(4), tmp_path / "l.nii.gz")
         for image, out in ((small, "s"), (large, "l")):
-            for view in render_core_views(image, tmp_path / out):
+            for view in _core(image, tmp_path / out):
                 size = Image.open(tmp_path / out / view.path).size
                 assert size == (PANEL_SIZE_PX * len(CORE_BBOX_FRACTIONS), PANEL_SIZE_PX + LABEL_HEIGHT_PX)
 
     def test_png_has_no_metadata(self, tmp_path):
-        render_core_views(_ras_image(tmp_path), tmp_path / "out")
+        _core(_ras_image(tmp_path), tmp_path / "out")
         assert not Image.open(tmp_path / "out/views/core_axial.png").info
 
 
@@ -92,8 +97,8 @@ class TestOrientation:
         assert nib.aff2axcodes(other.affine) == codes
         nib.save(ras, str(tmp_path / "ras.nii.gz"))
         nib.save(other, str(tmp_path / "other.nii.gz"))
-        render_core_views(tmp_path / "ras.nii.gz", tmp_path / "a")
-        render_core_views(tmp_path / "other.nii.gz", tmp_path / "b")
+        _core(tmp_path / "ras.nii.gz", tmp_path / "a")
+        _core(tmp_path / "other.nii.gz", tmp_path / "b")
         for plane in CORE_PLANES:
             name = f"views/core_{plane}.png"
             assert (tmp_path / "a" / name).read_bytes() == (tmp_path / "b" / name).read_bytes()
@@ -132,7 +137,7 @@ class TestAspect:
         data = np.zeros((60, 60, 20), dtype=np.float32)
         data[15:45, 15:45, 5:15] = 100
         image = _save(data, np.diag([1.0, 1.0, 3.0, 1.0]), tmp_path / "aniso.nii.gz")
-        views = render_core_views(image, tmp_path / "out")
+        views = _core(image, tmp_path / "out")
         for view in views:
             if view.plane == "axial":
                 continue
@@ -143,7 +148,7 @@ class TestAspect:
 
 class TestPlacement:
     def test_fallback_without_template(self, tmp_path):
-        views = render_core_views(_ras_image(tmp_path), tmp_path / "out")
+        views = _core(_ras_image(tmp_path), tmp_path / "out")
         assert [v.plane for v in views] == list(CORE_PLANES)
         for view in views:
             assert view.kind == "core"
@@ -154,7 +159,7 @@ class TestPlacement:
     def test_mni_with_template(self, tmp_path):
         rng = np.random.default_rng(0)
         template = _save(rng.normal(100, 10, (97, 115, 97)).astype(np.float32), MNI_RES2_AFFINE, tmp_path / "mni.nii.gz")
-        views = render_core_views(tmp_path / "missing.nii.gz", tmp_path / "out", template_image_path=template)
+        views = _core(tmp_path / "missing.nii.gz", tmp_path / "out", template_image_path=template)
         for view in views:
             assert view.placement == "mni"
             assert view.slice_positions == list(CORE_MNI_COORDS[view.plane])
@@ -173,8 +178,8 @@ class TestPlacement:
         mask_path = _save(mask, np.eye(4), tmp_path / "mask.nii.gz")
         assert bbox_indices(mask > 0, "sagittal", [0.0, 0.5, 1.0]) == [10, 20, 30]
         assert bbox_indices(mask > 0, "axial", [0.3]) == [3]
-        render_core_views(image, tmp_path / "masked", mask_path=mask_path)
-        render_core_views(image, tmp_path / "unmasked")
+        _core(image, tmp_path / "masked", mask_path=mask_path)
+        _core(image, tmp_path / "unmasked")
         a = (tmp_path / "masked/views/core_axial.png").read_bytes()
         assert a != (tmp_path / "unmasked/views/core_axial.png").read_bytes()
 
@@ -185,7 +190,7 @@ class TestPlacement:
         image = _ras_image(tmp_path)
         mask = _save(np.ones((10, 10, 10), np.uint8), np.eye(4), tmp_path / "mask.nii.gz")
         with pytest.raises(ValueError, match="does not match"):
-            render_core_views(image, tmp_path / "out", mask_path=mask)
+            _core(image, tmp_path / "out", mask_path=mask)
 
 
 class TestWindow:

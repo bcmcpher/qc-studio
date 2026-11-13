@@ -30,7 +30,7 @@ from .constants import (
     LABEL_HEIGHT_PX,
     PANEL_SIZE_PX,
 )
-from .models import ViewRef
+from .models import Plane, PlacementMethod, ViewKind, ViewRef
 
 PLANE_AXIS: dict[str, int] = {"sagittal": 0, "coronal": 1, "axial": 2}
 """RAS array axis that is fixed for each plane."""
@@ -46,6 +46,9 @@ PLANE_SIDES: dict[str, tuple[str, str]] = {
 
 SEPARATOR_GRAY = 96
 """Gray level of the vertical line between panels."""
+
+OVERLAY_RGB = (255, 64, 64)
+"""Colour of overlay outlines."""
 
 
 @dataclass(frozen=True)
@@ -94,12 +97,16 @@ def head_mask(volume: Volume) -> np.ndarray:
     return finite & (volume.data > level)
 
 
+def _load_on_grid(path: Path, volume: Volume, role: str) -> Volume:
+    other = load_volume(path)
+    if other.data.shape != volume.data.shape or not np.allclose(other.affine, volume.affine, atol=1e-3):
+        raise ValueError(f"{path}: {role} grid does not match the image grid")
+    return other
+
+
 def load_mask(path: Path, volume: Volume) -> np.ndarray:
     """Load a mask on the volume's grid; raise ``ValueError`` when the grids differ."""
-    mask = load_volume(path)
-    if mask.data.shape != volume.data.shape or not np.allclose(mask.affine, volume.affine, atol=1e-3):
-        raise ValueError(f"{path}: mask grid does not match the image grid")
-    return mask.data > 0
+    return _load_on_grid(path, volume, "mask").data > 0
 
 
 def bbox_indices(mask: np.ndarray, plane: str, fractions: Sequence[float]) -> list[int]:
@@ -167,34 +174,59 @@ def _font() -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     return ImageFont.load_default(size=LABEL_FONT_SIZE)
 
 
+def label_edges(labels: np.ndarray) -> np.ndarray:
+    """Pixels whose label differs from a 4-neighbour: the outline of a mask or each parcel."""
+    edges = np.zeros(labels.shape, dtype=bool)
+    edges[1:, :] |= labels[1:, :] != labels[:-1, :]
+    edges[:-1, :] |= labels[:-1, :] != labels[1:, :]
+    edges[:, 1:] |= labels[:, 1:] != labels[:, :-1]
+    edges[:, :-1] |= labels[:, :-1] != labels[:, 1:]
+    return edges
+
+
 def render_plane(
     volume: Volume,
     plane: str,
     indices: Sequence[int],
     labels: Sequence[str],
     limits: tuple[float, float],
+    overlay: Optional[np.ndarray] = None,
 ) -> Image.Image:
-    """Render slices of one plane side by side, with a label under each and side letters."""
+    """Render slices of one plane side by side, with a label under each and side letters.
+
+    With ``overlay`` (an integer label volume on the same grid), the label outlines are drawn
+    in ``OVERLAY_RGB`` and the image is RGB; otherwise it is grayscale.
+    """
     if len(indices) != len(labels):
         raise ValueError("one label per slice is needed")
     font = _font()
-    canvas = Image.new("L", (PANEL_SIZE_PX * len(indices), PANEL_SIZE_PX + LABEL_HEIGHT_PX), 0)
+    mode = "L" if overlay is None else "RGB"
+    white = 255 if overlay is None else (255, 255, 255)
+    gray = SEPARATOR_GRAY if overlay is None else (SEPARATOR_GRAY,) * 3
+    canvas = Image.new(mode, (PANEL_SIZE_PX * len(indices), PANEL_SIZE_PX + LABEL_HEIGHT_PX), 0)
     draw = ImageDraw.Draw(canvas)
     left_side, right_side = PLANE_SIDES[plane]
     for n, (index, label) in enumerate(zip(indices, labels)):
         image, row_mm, col_mm = extract_slice(volume, plane, index)
         size = fit_size((image.shape[0], image.shape[1]), row_mm, col_mm, PANEL_SIZE_PX)
         tile = Image.fromarray(_to_uint8(image, limits), mode="L").resize(size, Image.Resampling.BILINEAR)
+        if overlay is not None:
+            label_slice = np.take(overlay, index, axis=PLANE_AXIS[plane]).T[::-1]
+            # Nearest keeps label values; the outline is found at output resolution so it is 1 px.
+            resized = np.asarray(Image.fromarray(label_slice.astype(np.int32), mode="I").resize(size, Image.Resampling.NEAREST))
+            rgb = np.stack([np.asarray(tile)] * 3, axis=-1)
+            rgb[label_edges(resized)] = OVERLAY_RGB
+            tile = Image.fromarray(rgb, mode="RGB")
         x0 = n * PANEL_SIZE_PX
         canvas.paste(tile, (x0 + (PANEL_SIZE_PX - size[0]) // 2, (PANEL_SIZE_PX - size[1]) // 2))
         if n > 0:
-            draw.line([(x0, 0), (x0, PANEL_SIZE_PX + LABEL_HEIGHT_PX - 1)], fill=SEPARATOR_GRAY)
-        draw.text((x0 + 3, 2), left_side, fill=255, font=font)
-        draw.text((x0 + PANEL_SIZE_PX - 3, 2), right_side, fill=255, font=font, anchor="ra")
+            draw.line([(x0, 0), (x0, PANEL_SIZE_PX + LABEL_HEIGHT_PX - 1)], fill=gray)
+        draw.text((x0 + 3, 2), left_side, fill=white, font=font)
+        draw.text((x0 + PANEL_SIZE_PX - 3, 2), right_side, fill=white, font=font, anchor="ra")
         draw.text(
             (x0 + PANEL_SIZE_PX // 2, PANEL_SIZE_PX + LABEL_HEIGHT_PX // 2),
             label,
-            fill=255,
+            fill=white,
             font=font,
             anchor="mm",
         )
@@ -211,51 +243,96 @@ def _format_position(value: float) -> str:
     return f"{value:g}"
 
 
-def render_core_views(
+@dataclass(frozen=True)
+class Scene:
+    """The volume all views of one scan are drawn from, and how slices are placed in it."""
+
+    volume: Volume
+    placement: PlacementMethod
+    mask: Optional[np.ndarray]
+    """Placement mask for ``bbox_fraction``; ``None`` for ``mni``."""
+
+
+def prepare_scene(
     image_path: Path,
-    bundle_dir: Path,
     *,
     template_image_path: Optional[Path] = None,
     mask_path: Optional[Path] = None,
-) -> list[ViewRef]:
-    """Render the core views into ``bundle_dir/views`` and return their references.
+) -> Scene:
+    """Load the volume to draw and choose the slice placement.
 
-    With ``template_image_path`` (an MNI152NLin2009cAsym image of the scan), that image is
-    rendered at ``CORE_MNI_COORDS`` and positions are recorded in mm. Otherwise ``image_path``
-    is rendered at ``CORE_BBOX_FRACTIONS`` of the bounding box of ``mask_path`` (or of a
-    threshold head mask when no mask is given), and positions are recorded as fractions.
+    With ``template_image_path`` (an MNI152NLin2009cAsym image of the scan), that image is drawn
+    and slices sit at MNI coordinates. Otherwise ``image_path`` is drawn and slices sit at
+    fractions of the bounding box of ``mask_path`` (or of a threshold head mask when no mask is
+    given). ``mask_path`` is ignored with a template image.
     """
     if template_image_path is not None:
-        volume = load_volume(template_image_path)
-        placement = "mni"
-        mask = None
-    else:
-        volume = load_volume(image_path)
-        placement = "bbox_fraction"
-        mask = load_mask(mask_path, volume) if mask_path is not None else head_mask(volume)
+        return Scene(volume=load_volume(template_image_path), placement="mni", mask=None)
+    volume = load_volume(image_path)
+    mask = load_mask(mask_path, volume) if mask_path is not None else head_mask(volume)
+    return Scene(volume=volume, placement="bbox_fraction", mask=mask)
 
-    limits = window_limits(volume.data, CORE_WINDOW_PERCENTILES)
-    views = []
-    for plane in CORE_PLANES:
-        axis_name = AXIS_NAME[PLANE_AXIS[plane]]
-        if mask is None:
-            positions = list(CORE_MNI_COORDS[plane])
-            indices = mni_indices(volume, plane, positions)
-            labels = [f"{axis_name}={_format_position(p)} mm" for p in positions]
-        else:
-            positions = list(CORE_BBOX_FRACTIONS)
-            indices = bbox_indices(mask, plane, positions)
-            labels = [f"{axis_name} {round(100 * p)}%" for p in positions]
-        relative = Path("views") / f"core_{plane}.png"
-        save_png(render_plane(volume, plane, indices, labels, limits), bundle_dir / relative)
-        views.append(
-            ViewRef(
-                path=relative.as_posix(),
-                kind="core",
-                plane=plane,  # type: ignore[arg-type]
-                slice_positions=positions,
-                placement=placement,  # type: ignore[arg-type]
-                window_percentiles=CORE_WINDOW_PERCENTILES,
-            )
+
+def load_overlay(path: Path, scene: Scene) -> np.ndarray:
+    """Load a mask or label image on the scene's grid as integer labels.
+
+    Raises ``ValueError`` when the grids differ.
+    """
+    overlay = _load_on_grid(path, scene.volume, "overlay")
+    return np.rint(np.nan_to_num(overlay.data)).astype(np.int32)
+
+
+def render_view(
+    scene: Scene,
+    bundle_dir: Path,
+    *,
+    name: str,
+    kind: ViewKind,
+    plane: Plane,
+    mni_coords: Sequence[float],
+    bbox_fractions: Sequence[float],
+    window_percentiles: tuple[float, float],
+    rule: Optional[str] = None,
+    control: bool = False,
+    overlay: Optional[np.ndarray] = None,
+) -> ViewRef:
+    """Render one view to ``bundle_dir/views/<name>.png`` and return its reference."""
+    axis_name = AXIS_NAME[PLANE_AXIS[plane]]
+    if scene.mask is None:
+        positions = [float(p) for p in mni_coords]
+        indices = mni_indices(scene.volume, plane, positions)
+        labels = [f"{axis_name}={_format_position(p)} mm" for p in positions]
+    else:
+        positions = [float(p) for p in bbox_fractions]
+        indices = bbox_indices(scene.mask, plane, positions)
+        labels = [f"{axis_name} {round(100 * p)}%" for p in positions]
+    limits = window_limits(scene.volume.data, window_percentiles)
+    relative = Path("views") / f"{name}.png"
+    save_png(render_plane(scene.volume, plane, indices, labels, limits, overlay), bundle_dir / relative)
+    return ViewRef(
+        path=relative.as_posix(),
+        kind=kind,
+        plane=plane,
+        slice_positions=positions,
+        placement=scene.placement,
+        window_percentiles=window_percentiles,
+        rule=rule,
+        control=control,
+    )
+
+
+def render_core_views(scene: Scene, bundle_dir: Path) -> list[ViewRef]:
+    """Render the core views (one image per plane) and return their references."""
+    return [
+        render_view(
+            scene,
+            bundle_dir,
+            name=f"core_{plane}",
+            kind="core",
+            plane=plane,  # type: ignore[arg-type]
+            mni_coords=CORE_MNI_COORDS[plane],
+            bbox_fractions=CORE_BBOX_FRACTIONS,
+            window_percentiles=CORE_WINDOW_PERCENTILES,
         )
-    return views
+        for plane in CORE_PLANES
+    ]

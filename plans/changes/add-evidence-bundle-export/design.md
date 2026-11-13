@@ -124,9 +124,22 @@ Metadata sources found in `sample_data/`:
 - **Pillow for rendering.** Deterministic output, no matplotlib font or backend variation.
   Display resampled to isotropic mm.
 - **Template-space slice positions with a mask-bbox fallback.** The method is recorded in
-  `ViewRef`. As built, the `mni` method renders the template-space image itself. fMRIPrep's
-  `space-MNI152NLin2009cAsym_desc-preproc_T1w` is skull-stripped and often 2 mm, so it hides
-  background and scalp artefacts. Which image the exporter passes is open for section 5.
+  `ViewRef`. The `mni` method renders the template-space image itself.
+- **Existing files only (user, 2026-11-13).** Views are drawn from files a successful pipeline
+  run already wrote: the volumes named in `qc.json` (`base_mri_image_path`,
+  `overlay_mri_image_path`) and their template-space counterparts. No volume is resampled to
+  another space or written. Viewing the preprocessed image is the QC target for pipeline
+  outputs, so a skull-stripped template-space image is acceptable.
+- **The pipeline's mask places the slices and is audited.** When `overlay_mri_image_path` is
+  a mask or segmentation on the image grid, it sets the bounding box for `bbox_fraction`
+  placement and is drawn as outlines in mask overlay views. The threshold head mask is only a
+  last resort; it includes the neck, so the inferior slice can land below the brain.
+- **Targeted-view rule table.** `motion`: flags on `fd_mean`, `fd_num`, `fd_perc` or `cjv`
+  (MRIQC has no direct motion IQM for anatomical scans; CJV rises with head motion) add four
+  lateral sagittal slices. `noise`: flags on `snr_*`, `efc`, `fber`, `qi_1` or `gsr_*` add
+  axial slices with a window of the 0.5th to 50th percentile, which saturates the head and
+  shows the background. Mask overlay views (one per core plane) are added whenever an overlay
+  is set, so they are never controls.
 - **`PACKAGE.md` via `str.format`.** Ported as is from `render_markdown_template`.
 
 ## Risks / Trade-offs
