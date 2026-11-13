@@ -32,6 +32,8 @@ class ViewRule:
     mni_coords: tuple[float, ...]
     bbox_fractions: tuple[float, ...]
     window_percentiles: tuple[float, float]
+    needs_background: bool = False
+    """The view shows signal outside the head, so it is drawn from the background scene."""
 
 
 FLAG_RULES: tuple[ViewRule, ...] = (
@@ -53,6 +55,7 @@ FLAG_RULES: tuple[ViewRule, ...] = (
         mni_coords=CORE_MNI_COORDS["axial"],
         bbox_fractions=CORE_BBOX_FRACTIONS,
         window_percentiles=(0.5, 50.0),
+        needs_background=True,
     ),
 )
 """Flag rules, in the order their views are written."""
@@ -61,22 +64,28 @@ MASK_OVERLAY_RULE = "mask_overlay"
 """Rule name of the overlay views; one view per core plane."""
 
 
-def is_flagged(metric: MetricEvidence) -> bool:
-    return bool(metric.flags)
-
-
 def rule_fires(rule: ViewRule, metrics: Sequence[MetricEvidence]) -> bool:
     """True when any flagged metric matches one of the rule's names or globs."""
-    return any(is_flagged(m) and any(fnmatchcase(m.name, pattern) for pattern in rule.metrics) for m in metrics)
+    return any(m.is_flagged and _matches(rule, m.name) for m in metrics)
+
+
+def rule_applies(rule: ViewRule, metrics: Sequence[MetricEvidence]) -> bool:
+    """True when the scan has a metric the rule listens to, so the rule could fire on it."""
+    return any(_matches(rule, m.name) for m in metrics)
+
+
+def _matches(rule: ViewRule, name: str) -> bool:
+    return any(fnmatchcase(name, pattern) for pattern in rule.metrics)
 
 
 def fired_rules(metrics: Sequence[MetricEvidence], *, control: bool = False) -> list[tuple[ViewRule, bool]]:
     """Flag rules to render, each with whether its view is a control.
 
-    In control mode a scan with no flagged metric gets every flag rule as a control.
+    In control mode a scan with no flagged metric gets, as controls, the rules that could fire
+    on its metrics (so a T1w scan gets no ``motion`` control).
     """
-    if control and not any(is_flagged(m) for m in metrics):
-        return [(rule, True) for rule in FLAG_RULES]
+    if control and not any(m.is_flagged for m in metrics):
+        return [(rule, True) for rule in FLAG_RULES if rule_applies(rule, metrics)]
     return [(rule, False) for rule in FLAG_RULES if rule_fires(rule, metrics)]
 
 
@@ -86,27 +95,33 @@ def render_targeted_views(
     metrics: Sequence[MetricEvidence],
     *,
     overlay_path: Optional[Path] = None,
+    background_scene: Optional[Scene] = None,
     control: bool = False,
 ) -> list[ViewRef]:
     """Render the targeted views for one scan and return their references.
 
-    ``overlay_path`` must be on the grid of the scene's volume; otherwise ``ValueError``.
+    ``overlay_path`` must be on the grid of ``scene``'s volume (with an ``mni`` scene, the
+    template-space mask); otherwise ``ValueError``. Rules with ``needs_background`` are drawn
+    from ``background_scene`` when given: pass a native-space scene when ``scene`` is a
+    skull-stripped template image, whose background is zero.
     """
-    views = [
-        render_view(
-            scene,
-            bundle_dir,
-            name=f"targeted_{rule.name}",
-            kind="targeted",
-            plane=rule.plane,
-            mni_coords=rule.mni_coords,
-            bbox_fractions=rule.bbox_fractions,
-            window_percentiles=rule.window_percentiles,
-            rule=rule.name,
-            control=is_control,
+    views = []
+    for rule, is_control in fired_rules(metrics, control=control):
+        source = background_scene if rule.needs_background and background_scene is not None else scene
+        views.append(
+            render_view(
+                source,
+                bundle_dir,
+                name=f"targeted_{rule.name}",
+                kind="targeted",
+                plane=rule.plane,
+                mni_coords=rule.mni_coords,
+                bbox_fractions=rule.bbox_fractions,
+                window_percentiles=rule.window_percentiles,
+                rule=rule.name,
+                control=is_control,
+            )
         )
-        for rule, is_control in fired_rules(metrics, control=control)
-    ]
     if overlay_path is not None:
         overlay = load_overlay(overlay_path, scene)
         views.extend(

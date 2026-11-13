@@ -17,6 +17,7 @@ from evidence_bundle.view_rules import (
     MASK_OVERLAY_RULE,
     fired_rules,
     render_targeted_views,
+    rule_applies,
     rule_fires,
 )
 
@@ -95,9 +96,20 @@ class TestRuleTable:
 
 
 class TestControlMode:
-    def test_clean_scan_gets_every_rule_as_control(self):
-        fired = fired_rules([_metric("efc", flagged=False)], control=True)
+    def test_clean_bold_scan_gets_every_rule_as_control(self):
+        metrics = [_metric("fd_mean", flagged=False), _metric("gsr_x", flagged=False)]
+        fired = fired_rules(metrics, control=True)
         assert [(rule.name, control) for rule, control in fired] == [(r.name, True) for r in FLAG_RULES]
+
+    def test_clean_anatomical_scan_gets_no_motion_control(self):
+        metrics = [_metric("cjv", flagged=False), _metric("efc", flagged=False)]
+        fired = fired_rules(metrics, control=True)
+        assert [(rule.name, control) for rule, control in fired] == [("noise", True)]
+
+    def test_rule_applies(self):
+        motion = next(r for r in FLAG_RULES if r.name == "motion")
+        assert rule_applies(motion, [_metric("fd_perc", flagged=False)])
+        assert not rule_applies(motion, [_metric("cjv")])
 
     def test_flagged_scan_gets_no_controls(self):
         fired = fired_rules([_metric("efc")], control=True)
@@ -109,7 +121,8 @@ class TestControlMode:
     def test_rendered_controls_are_marked(self, tmp_path):
         image, mask = _volume(tmp_path)
         scene = prepare_scene(image, mask_path=mask)
-        views = render_targeted_views(scene, tmp_path / "out", [_metric("efc", flagged=False)], control=True)
+        metrics = [_metric("fd_mean", flagged=False), _metric("efc", flagged=False)]
+        views = render_targeted_views(scene, tmp_path / "out", metrics, control=True)
         assert [(v.rule, v.kind, v.control) for v in views] == [(r.name, "targeted", True) for r in FLAG_RULES]
         for view in views:
             assert (tmp_path / "out" / view.path).is_file()
@@ -160,3 +173,31 @@ class TestRenderTargeted:
         render_targeted_views(scene, tmp_path / "b", metrics, overlay_path=mask)
         for view in a:
             assert (tmp_path / "a" / view.path).read_bytes() == (tmp_path / "b" / view.path).read_bytes()
+
+    def test_noise_view_uses_background_scene(self, tmp_path):
+        image, mask = _volume(tmp_path)
+        scene = prepare_scene(image, mask_path=mask)
+        # A skull-stripped stand-in: zero outside the mask, so its background is empty.
+        stripped = tmp_path / "stripped.nii.gz"
+        data = np.asarray(nib.load(str(image)).dataobj) * np.asarray(nib.load(str(mask)).dataobj)
+        nib.save(nib.Nifti1Image(data.astype(np.float32), np.eye(4)), str(stripped))
+        stripped_scene = prepare_scene(stripped, mask_path=mask)
+        metrics = [_metric("efc"), _metric("fd_mean")]
+        render_targeted_views(stripped_scene, tmp_path / "a", metrics, background_scene=scene)
+        render_targeted_views(scene, tmp_path / "native", metrics)
+        render_targeted_views(stripped_scene, tmp_path / "stripped", metrics)
+        noise, motion = "views/targeted_noise.png", "views/targeted_motion.png"
+        assert (tmp_path / "a" / noise).read_bytes() == (tmp_path / "native" / noise).read_bytes()
+        assert (tmp_path / "a" / motion).read_bytes() == (tmp_path / "stripped" / motion).read_bytes()
+
+    def test_mask_overlay_on_mni_scene(self, tmp_path):
+        affine = np.array([[2.0, 0, 0, -96.0], [0, 2.0, 0, -132.0], [0, 0, 2.0, -78.0], [0, 0, 0, 1.0]])
+        shape = (97, 115, 97)
+        data = np.random.default_rng(0).normal(100, 10, shape).astype(np.float32)
+        mask = np.zeros(shape, np.uint8)
+        mask[20:77, 20:95, 15:80] = 1
+        nib.save(nib.Nifti1Image(data, affine), str(tmp_path / "mni.nii.gz"))
+        nib.save(nib.Nifti1Image(mask, affine), str(tmp_path / "mni_mask.nii.gz"))
+        scene = prepare_scene(tmp_path / "unused.nii.gz", template_image_path=tmp_path / "mni.nii.gz")
+        views = render_targeted_views(scene, tmp_path / "out", [], overlay_path=tmp_path / "mni_mask.nii.gz")
+        assert [(v.rule, v.placement) for v in views] == [(MASK_OVERLAY_RULE, "mni")] * 3

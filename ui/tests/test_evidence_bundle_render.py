@@ -15,6 +15,8 @@ from evidence_bundle.constants import (
     PANEL_SIZE_PX,
 )
 from evidence_bundle.render import (
+    Scene,
+    label_edges,
     Volume,
     bbox_indices,
     extract_slice,
@@ -209,3 +211,47 @@ class TestWindow:
         volume = load_volume(image)
         assert isinstance(volume, Volume)
         assert volume.zooms == pytest.approx((1.0, 1.2, 2.5))
+
+
+class TestReviewFixes:
+    def test_four_d_file_is_averaged_per_volume(self, tmp_path):
+        data = np.stack([_head(), _head(seed=1), _head(seed=2)], axis=3)
+        path = _save(data, np.diag([1.0, 1.0, 1.0, 1.0]), tmp_path / "bold.nii.gz")
+        volume = load_volume(path)
+        assert volume.data.shape == data.shape[:3]
+        assert np.allclose(volume.data, data.mean(axis=3), atol=1e-4)
+
+    def test_four_d_non_ras_is_averaged_then_reoriented(self, tmp_path):
+        data = np.stack([_head(), _head(seed=1)], axis=3)
+        ras = nib.Nifti1Image(data, np.eye(4))
+        transform = nib.orientations.ornt_transform(nib.orientations.axcodes2ornt(("R", "A", "S")), nib.orientations.axcodes2ornt(("L", "P", "S")))
+        volume = to_volume(ras.as_reoriented(transform))
+        assert np.allclose(volume.data, data.mean(axis=3), atol=1e-4)
+
+    def test_oblique_affine_rejected_for_mni(self):
+        affine = MNI_RES2_AFFINE.copy()
+        theta = np.deg2rad(10)
+        affine[:3, :3] = affine[:3, :3] @ np.array([[1, 0, 0], [0, np.cos(theta), -np.sin(theta)], [0, np.sin(theta), np.cos(theta)]])
+        volume = Volume(data=np.zeros((97, 115, 97)), affine=affine, zooms=(2.0, 2.0, 2.0))
+        with pytest.raises(ValueError, match="axis-aligned"):
+            mni_indices(volume, "axial", [10.0])
+
+    def test_scene_placement_and_mask_must_agree(self):
+        volume = to_volume(nib.Nifti1Image(_head(), np.eye(4)))
+        with pytest.raises(ValueError, match="needs a mask"):
+            Scene(volume=volume, placement="bbox_fraction", mask=None)
+        with pytest.raises(ValueError, match="needs a mask"):
+            Scene(volume=volume, placement="mni", mask=np.ones(volume.data.shape, bool))
+
+    def test_scene_window_is_cached_and_matches(self):
+        volume = to_volume(nib.Nifti1Image(_head(), np.eye(4)))
+        scene = Scene(volume=volume, placement="bbox_fraction", mask=np.ones(volume.data.shape, bool))
+        first = scene.window((0.5, 99.5))
+        assert first == window_limits(volume.data, (0.5, 99.5))
+        assert scene.window((0.5, 99.5)) is first
+
+    def test_label_edges_include_slice_border(self):
+        edges = label_edges(np.ones((5, 6), dtype=np.int32))
+        assert edges[0].all() and edges[-1].all() and edges[:, 0].all() and edges[:, -1].all()
+        assert not edges[1:-1, 1:-1].any()
+        assert not label_edges(np.zeros((5, 6), dtype=np.int32)).any()

@@ -12,7 +12,7 @@ fractions of the brain-mask bounding box otherwise. Each ``ViewRef`` records the
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -61,13 +61,19 @@ class Volume:
 
 
 def to_volume(img: Any) -> Volume:
-    """Reorient an image to the closest RAS orientation; average a 4D image over time."""
+    """Reorient an image to the closest RAS orientation; average a 4D image over time.
+
+    A 4D image is averaged one volume at a time, so a long series is never loaded whole.
+    """
+    if len(img.shape) == 4:
+        total = np.zeros(img.shape[:3], dtype=np.float64)
+        for t in range(img.shape[3]):
+            total += np.asarray(img.dataobj[..., t], dtype=np.float64)
+        img = nib.Nifti1Image(total / max(img.shape[3], 1), img.affine, img.header)
+    if len(img.shape) != 3:
+        raise ValueError(f"expected a 3D or 4D image, got {len(img.shape)} dimensions")
     canonical = nib.as_closest_canonical(img)
     data = np.asarray(canonical.dataobj, dtype=np.float64)
-    if data.ndim == 4:
-        data = data.mean(axis=3)
-    if data.ndim != 3:
-        raise ValueError(f"expected a 3D or 4D image, got {data.ndim} dimensions")
     zooms = tuple(float(z) for z in canonical.header.get_zooms()[:3])
     return Volume(data=data, affine=np.asarray(canonical.affine), zooms=zooms)  # type: ignore[arg-type]
 
@@ -127,8 +133,12 @@ def bbox_indices(mask: np.ndarray, plane: str, fractions: Sequence[float]) -> li
 def mni_indices(volume: Volume, plane: str, coords: Sequence[float]) -> list[int]:
     """Slice indices of world coordinates (mm) along the plane's axis.
 
-    The volume must be in template space. Raises ``ValueError`` for a coordinate outside it.
+    The volume must be in template space with an axis-aligned affine (template grids are).
+    Raises ``ValueError`` for an oblique affine or a coordinate outside the image.
     """
+    rotation = volume.affine[:3, :3]
+    if not np.allclose(rotation, np.diag(np.diag(rotation)), atol=1e-4):
+        raise ValueError("MNI placement needs an axis-aligned affine; this image is oblique")
     axis = PLANE_AXIS[plane]
     inverse = np.linalg.inv(volume.affine)
     indices = []
@@ -175,13 +185,14 @@ def _font() -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
 
 
 def label_edges(labels: np.ndarray) -> np.ndarray:
-    """Pixels whose label differs from a 4-neighbour: the outline of a mask or each parcel."""
-    edges = np.zeros(labels.shape, dtype=bool)
-    edges[1:, :] |= labels[1:, :] != labels[:-1, :]
-    edges[:-1, :] |= labels[:-1, :] != labels[1:, :]
-    edges[:, 1:] |= labels[:, 1:] != labels[:, :-1]
-    edges[:, :-1] |= labels[:, :-1] != labels[:, 1:]
-    return edges
+    """Pixels whose label differs from a 4-neighbour: the outline of a mask or each parcel.
+
+    Outside the slice counts as label 0, so a mask cut off by the field of view is outlined
+    along the border too.
+    """
+    padded = np.pad(labels, 1, constant_values=0)
+    centre = padded[1:-1, 1:-1]
+    return (centre != padded[:-2, 1:-1]) | (centre != padded[2:, 1:-1]) | (centre != padded[1:-1, :-2]) | (centre != padded[1:-1, 2:])
 
 
 def render_plane(
@@ -209,14 +220,14 @@ def render_plane(
     for n, (index, label) in enumerate(zip(indices, labels)):
         image, row_mm, col_mm = extract_slice(volume, plane, index)
         size = fit_size((image.shape[0], image.shape[1]), row_mm, col_mm, PANEL_SIZE_PX)
-        tile = Image.fromarray(_to_uint8(image, limits), mode="L").resize(size, Image.Resampling.BILINEAR)
+        tile = Image.fromarray(_to_uint8(image, limits)).resize(size, Image.Resampling.BILINEAR)
         if overlay is not None:
             label_slice = np.take(overlay, index, axis=PLANE_AXIS[plane]).T[::-1]
             # Nearest keeps label values; the outline is found at output resolution so it is 1 px.
-            resized = np.asarray(Image.fromarray(label_slice.astype(np.int32), mode="I").resize(size, Image.Resampling.NEAREST))
+            resized = np.asarray(Image.fromarray(label_slice.astype(np.int32)).resize(size, Image.Resampling.NEAREST))
             rgb = np.stack([np.asarray(tile)] * 3, axis=-1)
             rgb[label_edges(resized)] = OVERLAY_RGB
-            tile = Image.fromarray(rgb, mode="RGB")
+            tile = Image.fromarray(rgb)
         x0 = n * PANEL_SIZE_PX
         canvas.paste(tile, (x0 + (PANEL_SIZE_PX - size[0]) // 2, (PANEL_SIZE_PX - size[1]) // 2))
         if n > 0:
@@ -251,6 +262,20 @@ class Scene:
     placement: PlacementMethod
     mask: Optional[np.ndarray]
     """Placement mask for ``bbox_fraction``; ``None`` for ``mni``."""
+    _windows: dict = field(default_factory=dict, init=False, repr=False, compare=False)
+
+    def __post_init__(self):
+        if (self.placement == "bbox_fraction") != (self.mask is not None):
+            raise ValueError("bbox_fraction placement needs a mask; mni placement takes none")
+
+    def window(self, percentiles: tuple[float, float]) -> tuple[float, float]:
+        """``window_limits`` of the volume, computed once per percentile pair."""
+        if percentiles not in self._windows:
+            if "finite" not in self._windows:
+                data = self.volume.data
+                self._windows["finite"] = data[np.isfinite(data)]
+            self._windows[percentiles] = window_limits(self._windows["finite"], percentiles)
+        return self._windows[percentiles]
 
 
 def prepare_scene(
@@ -276,7 +301,10 @@ def prepare_scene(
 def load_overlay(path: Path, scene: Scene) -> np.ndarray:
     """Load a mask or label image on the scene's grid as integer labels.
 
-    Raises ``ValueError`` when the grids differ.
+    Values are rounded to the nearest integer, so a probability map is cut at 0.5; pass a mask
+    or a label image. With an ``mni`` scene the overlay must be the template-space file (for
+    fMRIPrep, ``space-MNI152NLin2009cAsym_..._desc-brain_mask``). Raises ``ValueError`` when the
+    grids differ.
     """
     overlay = _load_on_grid(path, scene.volume, "overlay")
     return np.rint(np.nan_to_num(overlay.data)).astype(np.int32)
@@ -298,15 +326,16 @@ def render_view(
 ) -> ViewRef:
     """Render one view to ``bundle_dir/views/<name>.png`` and return its reference."""
     axis_name = AXIS_NAME[PLANE_AXIS[plane]]
-    if scene.mask is None:
+    if scene.placement == "mni":
         positions = [float(p) for p in mni_coords]
         indices = mni_indices(scene.volume, plane, positions)
         labels = [f"{axis_name}={_format_position(p)} mm" for p in positions]
     else:
         positions = [float(p) for p in bbox_fractions]
+        assert scene.mask is not None  # enforced by Scene
         indices = bbox_indices(scene.mask, plane, positions)
         labels = [f"{axis_name} {round(100 * p)}%" for p in positions]
-    limits = window_limits(scene.volume.data, window_percentiles)
+    limits = scene.window(window_percentiles)
     relative = Path("views") / f"{name}.png"
     save_png(render_plane(scene.volume, plane, indices, labels, limits, overlay), bundle_dir / relative)
     return ViewRef(

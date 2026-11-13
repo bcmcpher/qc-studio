@@ -152,6 +152,11 @@ class MetricEvidence(_Strict):
     flags: list[MetricFlag] = Field(default_factory=list)
     context_category: Optional[ContextCategory] = None
 
+    @property
+    def is_flagged(self) -> bool:
+        """True when the metric carries at least one flag."""
+        return bool(self.flags)
+
     @model_validator(mode="before")
     @classmethod
     def _check_direction_named(cls, data: Any) -> Any:
@@ -415,4 +420,4 @@ class EvidenceBundle(_Strict):
 
     def flagged_metrics(self) -> list[str]:
         """Names of metrics with at least one flag."""
-        return [m.name for m in self.metrics if m.flags]
+        return [m.name for m in self.metrics if m.is_flagged]
