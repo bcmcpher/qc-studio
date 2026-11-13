@@ -91,7 +91,8 @@ Metadata sources found in `sample_data/`:
 - **Acquisition check against the project's modal value.** For each signature field, the
   modal value among scans of the same suffix (and site when known) is the expected value. A
   scan whose rounded value differs is recorded as an `AcquisitionDeviation` (field, value,
-  expected, share of scans with the expected value). Deviations go into `bundle.json`,
+  expected, share of scans with the expected value). When values tie for most common, the field has no
+  expected value and no scan deviates on it. Deviations go into `bundle.json`,
   `PACKAGE.md` and a project-level `acquisition_summary.tsv`.
 - **Structural context: one base, per-suffix overrides.** `iqms/anat.json` (renamed from
   `t1w.json`) holds the structural IQMs. `iqms/t2w.json` holds only overrides. In the first

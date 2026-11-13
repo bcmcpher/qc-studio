@@ -5,6 +5,7 @@ NIfTI header. Only the allowlisted fields of ``models.AcquisitionMetadata`` are 
 """
 
 from collections import Counter
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Union, get_args
 
@@ -39,8 +40,8 @@ _FLOAT_FIELDS = (
 
 
 def _clean_sidecar(sidecar: Mapping[str, Any]) -> dict[str, Any]:
-    """Coerce numeric allowlisted fields; drop values that are not numbers (recorded as null)."""
-    cleaned = dict(sidecar)
+    """Coerce numeric allowlisted fields; drop nulls and values that are not numbers."""
+    cleaned = {k: v for k, v in sidecar.items() if v is not None}
     if "MagneticFieldStrength" in cleaned:
         cleaned["MagneticFieldStrength"] = normalize_field_strength(cleaned["MagneticFieldStrength"])
     for name in set(_FLOAT_FIELDS) & set(cleaned):
@@ -55,14 +56,22 @@ def nifti_geometry(path: Union[str, Path]) -> GeometryMetadata:
     """Read shape, voxel size, orientation codes and field of view from a NIfTI header."""
     image = nib.load(str(path))
     shape = tuple(int(n) for n in image.shape)
-    zooms = tuple(float(z) for z in image.header.get_zooms()[:3])
+    zooms = [float(z) for z in image.header.get_zooms()[:3]]
     axcodes = nib.orientations.aff2axcodes(image.affine)
+    # Voxel size and field of view in RAS axis order (x = R-L, y = A-P, z = S-I), as MRIQC
+    # reports ``spacing_*`` for its RAS-conformed image. Shape and orientation stay as stored.
+    world_axis = [int(a) for a in nib.orientations.io_orientation(image.affine)[:, 0]]
+    ras_zooms = [0.0, 0.0, 0.0]
+    ras_extent = [0.0, 0.0, 0.0]
+    for voxel_axis, axis in enumerate(world_axis):
+        ras_zooms[axis] = zooms[voxel_axis]
+        ras_extent[axis] = shape[voxel_axis] * zooms[voxel_axis]
     return GeometryMetadata.model_validate(
         {
             "shape": shape,
-            "voxel_size": zooms,
+            "voxel_size": tuple(ras_zooms),
             "orientation": tuple(str(c) for c in axcodes),
-            "field_of_view": tuple(n * z for n, z in zip(shape[:3], zooms)),
+            "field_of_view": tuple(ras_extent),
         }
     )
 
@@ -87,15 +96,16 @@ def extract_acquisition(
 ) -> AcquisitionMetadata:
     """Build allowlisted acquisition metadata for one scan.
 
-    Sidecar values win over the MRIQC ``bids_meta`` copy. Geometry comes from the NIfTI header
-    when ``nifti_path`` is given, otherwise from the MRIQC ``size_*``/``spacing_*`` IQMs.
+    Valid sidecar values win over the MRIQC ``bids_meta`` copy; a sidecar value that is null or
+    not a number does not replace a valid ``bids_meta`` value. Geometry comes from the NIfTI
+    header when ``nifti_path`` is given, otherwise from the MRIQC ``size_*``/``spacing_*`` IQMs.
     """
     mriqc = mriqc or {}
-    merged = {**(mriqc.get("bids_meta") or {}), **(sidecar or {})}
+    merged = {**_clean_sidecar(mriqc.get("bids_meta") or {}), **_clean_sidecar(sidecar or {})}
     provenance = mriqc.get("provenance") or {}
     geometry = nifti_geometry(nifti_path) if nifti_path is not None else _mriqc_geometry(mriqc)
     return AcquisitionMetadata.from_sidecar(
-        _clean_sidecar(merged),
+        merged,
         site=site,
         geometry=geometry,
         provenance=ProvenanceMetadata(mriqc_version=provenance.get("version"), md5sum=provenance.get("md5sum")),
@@ -103,7 +113,8 @@ def extract_acquisition(
 
 
 def _round(value: float, step: float) -> float:
-    decimals = max(0, -int(f"{step:e}".split("e")[1]))
+    exponent = Decimal(str(step)).normalize().as_tuple().exponent
+    decimals = max(0, -exponent) if isinstance(exponent, int) else 0
     return round(round(value / step) * step, decimals)
 
 
@@ -141,7 +152,8 @@ def acquisition_deviations(
     """Compare each scan's signature with the modal values of its suffix (and site) group.
 
     Returns one list of deviations per scan, in input order. A missing value counts as a value,
-    so a null field differs from a non-null mode. Groups of one scan have no deviations.
+    so a null field differs from a non-null mode. Groups of one scan have no deviations. When
+    two or more values tie for the most common, the field has no mode and no scan deviates.
     """
     sites = list(sites) if sites is not None else [None] * len(signatures)
     if len(sites) != len(signatures):
@@ -157,7 +169,10 @@ def acquisition_deviations(
             continue
         for field in CHECKED_FIELDS:
             values = [getattr(signatures[i], field) for i in members]
-            expected, count = Counter(values).most_common(1)[0]
+            ranked = Counter(values).most_common(2)
+            expected, count = ranked[0]
+            if len(ranked) > 1 and ranked[1][1] == count:
+                continue
             for i, value in zip(members, values):
                 if value != expected:
                     result[i].append(AcquisitionDeviation(field=field, value=value, expected=expected, share=count / n, n=n))

@@ -143,6 +143,30 @@ class TestExtractAcquisition:
         assert geometry.field_of_view == (4.0, 5.0, 18.0)
 
 
+class TestExtractAcquisitionReview:
+    def test_null_sidecar_value_keeps_bids_meta(self):
+        acquisition = extract_acquisition({"bids_meta": {"EchoTime": 0.003, "FlipAngle": 9}}, {"EchoTime": None, "FlipAngle": "n/a"})
+        assert acquisition.sequence.EchoTime == 0.003
+        assert acquisition.sequence.FlipAngle == 9.0
+
+    def test_multi_echo_list_does_not_replace_scalar(self):
+        acquisition = extract_acquisition({"bids_meta": {"EchoTime": 0.003}}, {"EchoTime": [0.002, 0.004]})
+        assert acquisition.sequence.EchoTime == 0.003
+
+    def test_voxel_size_in_ras_order(self, tmp_path):
+        import nibabel as nib
+
+        # Sagittal storage: voxel axes i, j, k run along S, R, A (zooms 1.2, 1.0, 0.9).
+        affine = np.array([[0, 1.0, 0, 0], [0, 0, 0.9, 0], [1.2, 0, 0, 0], [0, 0, 0, 1]])
+        path = tmp_path / "sagittal.nii.gz"
+        nib.save(nib.Nifti1Image(np.zeros((10, 20, 30), dtype=np.int16), affine), str(path))
+        geometry = nifti_geometry(path)
+        assert geometry.shape == (10, 20, 30)
+        assert geometry.orientation == ("S", "R", "A")
+        assert geometry.voxel_size == pytest.approx((1.0, 0.9, 1.2))
+        assert geometry.field_of_view == pytest.approx((20.0, 27.0, 12.0))
+
+
 class TestProtocolSignature:
     def test_rounding(self):
         acquisition = AcquisitionMetadata.from_sidecar(
@@ -164,6 +188,10 @@ class TestProtocolSignature:
         assert signature.FlipAngle == 8.0
         assert signature.VoxelSize == (1.0, 1.0, 1.2)
         assert signature.Manufacturer == "siemens"
+
+    @pytest.mark.parametrize("value,step,expected", [(0.74, 0.25, 0.75), (0.0371, 0.025, 0.025), (2.92e-3, 1e-4, 0.0029), (8.4, 1.0, 8.0)])
+    def test_round_to_step(self, value, step, expected):
+        assert round_to_step(value, step) == expected
 
     def test_short_trs_stay_apart(self):
         assert round_to_step(0.00695, 0.001) != round_to_step(0.0082, 0.001)
@@ -195,6 +223,11 @@ class TestAcquisitionCheck:
         sites = ["A", "A", "A", "B", "B", "B"]
         signatures = [_signature()] * 3 + [_signature(RepetitionTime=2.0)] * 3
         assert all(not d for d in acquisition_deviations(signatures, sites))
+
+    def test_tied_mode_has_no_deviation(self):
+        signatures = [_signature(RepetitionTime=2.3), _signature(RepetitionTime=2.4)]
+        assert acquisition_deviations(signatures) == [[], []]
+        assert acquisition_deviations(list(reversed(signatures))) == [[], []]
 
     def test_missing_value_is_a_deviation(self):
         signatures = [_signature()] * 4 + [_signature(InversionTime=None)]
@@ -240,6 +273,11 @@ class TestStrata:
         stats = scan_statistics(0, scans, resolve_context("T1w"), CONFIG)
         assert all(m.project_percentile is None for m in stats.metrics)
         assert stats.outlier is None
+
+    def test_fixed_and_fallback_fields_disjoint(self):
+        from evidence_bundle.constants import SIGNATURE_FALLBACK_ORDER, SIGNATURE_FIXED
+
+        assert not set(SIGNATURE_FIXED) & set(SIGNATURE_FALLBACK_ORDER)
 
     def test_fixed_fields_never_dropped(self):
         scans = _project(15) + _project(15, seed=2, MagneticFieldStrength=1.5)
@@ -460,6 +498,16 @@ class TestOutlierScore:
         assert score is not None
         assert [c.metric for c in score.top_contributors][:2] == ["a", "b"]
         assert all(c.contribution > 0 for c in score.top_contributors)
+
+    def test_ordinary_scans_have_ordinary_percentiles(self):
+        # In a small stratum with no outliers, scores in-sample members would push the
+        # percentiles up (median about 73 at n = 12); leave-one-out keeps them near 50.
+        resolved = resolve_context("T1w")
+        percentiles = []
+        for seed in range(5):
+            scans = _project(12, seed=seed)
+            percentiles += [scan_statistics(i, scans, resolved, CONFIG).outlier.percentile for i in range(12)]  # type: ignore[union-attr]
+        assert 35 <= float(np.median(percentiles)) <= 60
 
     def test_constant_metrics_left_out(self):
         members = np.column_stack([np.ones(20), np.random.default_rng(1).normal(size=20)])

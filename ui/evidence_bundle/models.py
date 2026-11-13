@@ -243,11 +243,11 @@ class GeometryMetadata(_Strict):
 
     shape: Optional[tuple[int, ...]] = None
     voxel_size: Optional[tuple[float, float, float]] = None
-    """Spatial voxel size in mm."""
+    """Spatial voxel size in mm, in RAS axis order (as MRIQC ``spacing_x/y/z``)."""
     orientation: Optional[tuple[str, str, str]] = None
     """Axis codes, for example ``("R", "A", "S")``."""
     field_of_view: Optional[tuple[float, float, float]] = None
-    """Spatial extent in mm."""
+    """Spatial extent in mm, in RAS axis order."""
     SliceThickness: Optional[float] = None
     """From the sidecar."""
     SpacingBetweenSlices: Optional[float] = None

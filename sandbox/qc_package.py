@@ -21,7 +21,6 @@ if str(_UI_DIR) not in sys.path:
     sys.path.insert(0, str(_UI_DIR))
 
 from utils.reference_data import (  # noqa: E402
-    MAX_REFERENCE_ROWS,
     filter_reference_frame,
     normalize_field_strength,
     normalize_manufacturer,
@@ -182,13 +181,18 @@ def enrich_iqms(
     subject_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach reference stats and optional semantic context to every IQM."""
+    # Shared filter from ui/utils/reference_data.py: Manufacturer and field strength only
+    # (the old sandbox filter also matched ManufacturersModelName). No row cap, and the full
+    # population is kept when the subject's scanner has no reference rows.
     metadata = subject_metadata or {}
     filtered_ref = filter_reference_frame(
         reference_df,
         normalize_manufacturer(metadata.get("Manufacturer")),
         normalize_field_strength(metadata.get("MagneticFieldStrength")),
-        MAX_REFERENCE_ROWS,
+        max(len(reference_df), 1),
     )
+    if filtered_ref.empty:
+        filtered_ref = reference_df
     enriched = []
 
     for metric_name, value in sorted(subject_iqms.items()):

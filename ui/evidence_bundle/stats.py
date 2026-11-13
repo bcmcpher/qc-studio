@@ -12,7 +12,7 @@ from typing import Any, Mapping, Optional, Sequence, get_args
 import numpy as np
 import pandas as pd
 
-from utils.reference_data import MAX_REFERENCE_ROWS, filter_reference_frame, normalize_field_strength
+from utils.reference_data import MAX_REFERENCE_ROWS, VOXEL_SIZE_COLUMNS, filter_reference_frame, normalize_field_strength
 
 from .constants import (
     MAD_SCALE,
@@ -20,6 +20,7 @@ from .constants import (
     OUTLIER_WINSOR_Z,
     REFERENCE_SIGNATURE_FIELDS,
     SIGNATURE_FALLBACK_ORDER,
+    SIGNATURE_FIXED,
     SIGNATURE_ROUNDING,
 )
 from .context import ResolvedContext, lookup_metric
@@ -116,7 +117,7 @@ def select_stratum(index: int, scans: Sequence[ScanInput], config: StatsConfig) 
     candidates = [j for j, scan in enumerate(scans) if j != index and (target.site is None or scan.site == target.site)]
     filters = {} if target.site is None else {"site": target.site}
     fields: list[SignatureField] = list(get_args(SignatureField))
-    drops = list(SIGNATURE_FALLBACK_ORDER)
+    drops = [f for f in SIGNATURE_FALLBACK_ORDER if f not in SIGNATURE_FIXED]
     while True:
         members = [j for j in candidates if all(_signature_value(scans[j].signature, f) == _signature_value(target.signature, f) for f in fields)]
         if len(members) >= config.min_stratum_size:
@@ -162,7 +163,7 @@ def reference_subset(
             applied["Manufacturer"] = manufacturer
         voxel = signature.VoxelSize if "VoxelSize" in fields else None
         data = filter_reference_frame(reference, manufacturer, field_strength, MAX_REFERENCE_ROWS, voxel, SIGNATURE_ROUNDING["VoxelSize"])
-        if voxel is not None and all(c in reference.columns for c in ("spacing_x", "spacing_y", "spacing_z")):
+        if voxel is not None and all(c in reference.columns for c in VOXEL_SIZE_COLUMNS):
             applied["VoxelSize"] = "x".join(f"{v:g}" for v in voxel)
         if len(data) >= config.min_stratum_size or not drops:
             break
@@ -241,6 +242,18 @@ def shrinkage_covariance(x: np.ndarray) -> np.ndarray:
     return shrink * target + (1 - shrink) * sample
 
 
+def _distance(target: np.ndarray, members: np.ndarray, keep: np.ndarray) -> tuple[float, np.ndarray]:
+    """Squared-distance terms of ``target`` against ``members`` over the ``keep`` columns."""
+    median = np.median(members[:, keep], axis=0)
+    mad = MAD_SCALE * np.median(np.abs(members[:, keep] - median), axis=0)
+    mad = np.where(mad > 0, mad, np.inf)  # a metric constant in this subset contributes nothing
+    z_members = np.clip((members[:, keep] - median) / mad, -OUTLIER_WINSOR_Z, OUTLIER_WINSOR_Z)
+    z_target = (target[keep] - median) / mad
+    precision = np.linalg.pinv(shrinkage_covariance(z_members - z_members.mean(axis=0)))
+    contributions = z_target * (precision @ z_target)
+    return math.sqrt(max(float(contributions.sum()), 0.0)), contributions
+
+
 def outlier_score(target: np.ndarray, members: np.ndarray, names: Sequence[str]) -> Optional[OutlierScore]:
     """Robust Mahalanobis distance of ``target`` from the stratum ``members`` (rows).
 
@@ -248,20 +261,17 @@ def outlier_score(target: np.ndarray, members: np.ndarray, names: Sequence[str])
     left out. Member z-scores are clipped to ``OUTLIER_WINSOR_Z`` before the shrinkage
     covariance, so one extreme member does not hide others. A metric's contribution is its
     term ``z_i * (inverse covariance @ z)_i``; contributions sum to the squared distance.
+
+    The percentile compares the score with each member's score against the other members
+    (leave-one-out), so the target and the members are scored the same way.
     """
-    median = np.median(members, axis=0)
-    mad = MAD_SCALE * np.median(np.abs(members - median), axis=0)
+    mad = MAD_SCALE * np.median(np.abs(members - np.median(members, axis=0)), axis=0)
     keep = mad > 0
-    if not keep.any():
+    if not keep.any() or len(members) < 3:
         return None
     used = [n for n, k in zip(names, keep) if k]
-    z_members = np.clip((members[:, keep] - median[keep]) / mad[keep], -OUTLIER_WINSOR_Z, OUTLIER_WINSOR_Z)
-    z_target = (target[keep] - median[keep]) / mad[keep]
-    precision = np.linalg.pinv(shrinkage_covariance(z_members - z_members.mean(axis=0)))
-    weighted = precision @ z_target
-    score = math.sqrt(max(float(z_target @ weighted), 0.0))
-    member_scores = np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", z_members, precision, z_members), 0.0))
-    contributions = z_target * weighted
+    score, contributions = _distance(target, members, keep)
+    member_scores = np.array([_distance(members[k], np.delete(members, k, axis=0), keep)[0] for k in range(len(members))])
     order = [i for i in np.argsort(-contributions, kind="stable") if contributions[i] > 0][:OUTLIER_TOP_CONTRIBUTORS]
     return OutlierScore(
         score=score,
