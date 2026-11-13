@@ -41,8 +41,9 @@ def load_metric_context(suffix: str) -> MetricContextFile:
 
     The first file in ``CONTEXT_FILES`` is the base; later files are overrides merged in order.
     The lookup is case-insensitive, and ``modality`` of the result is the canonical suffix.
+    Each call returns a deep copy, so callers may change the result without changing the cache.
     """
-    return _load(_canonical_suffix(suffix))
+    return _load(_canonical_suffix(suffix)).model_copy(deep=True)
 
 
 @lru_cache(maxsize=None)
@@ -82,13 +83,13 @@ def resolve_context(suffix: str, contrast_map: Optional[Mapping[str, str]] = Non
     A suffix with its own context is ``supported``, whatever the map says. Otherwise the map
     (``DEFAULT_CONTRAST_MAP`` unless ``contrast_map`` replaces it) gives a ``fallback`` context,
     in which ``FALLBACK_CONTEXT_DEPENDENT`` metrics become ``context_dependent``. Any other
-    suffix is ``unsupported``.
+    suffix is ``unsupported``. Suffixes and map keys match case-insensitively.
     """
     if suffix.lower() in _SUFFIXES:
         own = _canonical_suffix(suffix)
         return ResolvedContext("supported", own, load_metric_context(own))
     mapping = DEFAULT_CONTRAST_MAP if contrast_map is None else contrast_map
-    target = mapping.get(suffix)
+    target = {k.lower(): v for k, v in mapping.items()}.get(suffix.lower())
     if target is None:
         return ResolvedContext("unsupported", None, None)
     context_suffix = _canonical_suffix(target)

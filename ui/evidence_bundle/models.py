@@ -5,7 +5,7 @@ metrics with statistical context, a multivariate outlier score, rendered views a
 rater's QC. See ``docs/source/development/evidence_bundle_design.md``.
 """
 
-from typing import Any, Literal, Mapping, Optional, Sequence, Union
+from typing import Any, Literal, Mapping, Optional, Sequence, Union, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -56,7 +56,8 @@ SignatureValue = Union[str, float, tuple[float, float, float], None]
 
 
 class _Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # NaN and inf serialize to JSON null, which then fails to load; reject them on input.
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 def context_category_for(flags: Sequence[str]) -> ContextCategory:
@@ -143,6 +144,16 @@ class MetricEvidence(_Strict):
     reference_percentile: Optional[float] = Field(default=None, ge=0, le=100)
     flags: list[MetricFlag] = Field(default_factory=list)
     context_category: Optional[ContextCategory] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _check_direction_named(cls, data: Any) -> Any:
+        # The Literal error gives only the list index; name the metric instead.
+        if isinstance(data, Mapping):
+            direction = data.get("direction_of_concern")
+            if isinstance(direction, str) and direction not in get_args(DirectionOfConcern):
+                raise ValueError(f"{data.get('name')}: direction_of_concern '{direction}' is not one of {get_args(DirectionOfConcern)}")
+        return data
 
     @model_validator(mode="after")
     def _check_flags_and_category(self):
@@ -352,12 +363,14 @@ class EvidenceBundle(_Strict):
 
     @model_validator(mode="after")
     def _check_support(self):
-        if self.protocol_signature is not None and self.protocol_signature.suffix != self.suffix:
+        if self.protocol_signature is not None and self.protocol_signature.suffix.lower() != self.suffix.lower():
             raise ValueError(f"protocol signature suffix '{self.protocol_signature.suffix}' is not the bundle suffix '{self.suffix}'")
-        if self.support == "supported" and self.context_suffix != self.suffix:
+        # Suffixes compare case-insensitively, as in context.resolve_context.
+        own = self.context_suffix is not None and self.context_suffix.lower() == self.suffix.lower()
+        if self.support == "supported" and not own:
             raise ValueError(f"a supported bundle uses its own context, not '{self.context_suffix}'")
         if self.support == "fallback":
-            if self.context_suffix is None or self.context_suffix == self.suffix:
+            if self.context_suffix is None or own:
                 raise ValueError("a fallback bundle needs a context suffix other than its own")
             with_reference = [m.name for m in self.metrics if m.reference_percentile is not None or "reference_outlier" in m.flags]
             if with_reference:

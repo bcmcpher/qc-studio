@@ -121,8 +121,17 @@ class TestMetricEvidence:
     def test_unknown_direction_rejected_with_metric_name(self):
         data = json.loads(_bundle().model_dump_json())
         data["metrics"][0]["direction_of_concern"] = "closer_to_1_or_lower_range_better"
-        with pytest.raises(ValidationError, match="direction_of_concern"):
+        with pytest.raises(ValidationError, match=r"cjv: direction_of_concern 'closer_to_1_or_lower_range_better'"):
             EvidenceBundle.model_validate(data)
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_value_rejected(self, value):
+        with pytest.raises(ValidationError, match="finite"):
+            _metric(value=value)
+
+    def test_non_finite_score_rejected(self):
+        with pytest.raises(ValidationError, match="finite"):
+            OutlierScore(score=float("inf"), metrics_used=[])
 
     @pytest.mark.parametrize(
         "flags,expected",
@@ -259,7 +268,18 @@ class TestMetricContextFiles:
         assert set(CONTEXT_FILES) == {"T1w", "T2w", "bold", "dwi"}
 
     def test_case_insensitive(self):
-        assert load_metric_context("t1w") is load_metric_context("T1w")
+        assert load_metric_context("t1w") == load_metric_context("T1w")
+
+    def test_caller_changes_do_not_reach_cache(self):
+        context = load_metric_context("T2w")
+        context.metrics["cjv"].caveats.append("scan-specific note")
+        del context.metrics["cnr"]
+        fresh = load_metric_context("T2w")
+        assert "scan-specific note" not in fresh.metrics["cjv"].caveats
+        assert "cnr" in fresh.metrics
+        resolved = resolve_context("FLAIR").context
+        assert resolved is not None
+        assert "scan-specific note" not in resolved.metrics["efc"].caveats + resolved.metrics["cjv"].caveats
 
     def test_unknown_suffix(self):
         with pytest.raises(ValueError, match="no IQM context"):
@@ -384,6 +404,10 @@ class TestContrastSupport:
         assert (resolved.support, resolved.context_suffix) == ("fallback", "T1w")
         assert resolve_context("FLAIR", {"PDw": "T1w"}).support == "unsupported"
 
+    @pytest.mark.parametrize("suffix", ["flair", "Flair", "FLAIR"])
+    def test_map_lookup_case_insensitive(self, suffix):
+        assert resolve_context(suffix)[:2] == ("fallback", "T2w")
+
     def test_user_map_cannot_demote_supported(self):
         assert resolve_context("T2w", {"T2w": "T1w"}).support == "supported"
 
@@ -418,6 +442,14 @@ class TestSupportValidators:
     def test_fallback_needs_other_context(self):
         with pytest.raises(ValidationError, match="context suffix other than its own"):
             _flair_bundle(context_suffix="FLAIR")
+
+    def test_suffix_case_matches_resolve_context(self):
+        resolved = resolve_context("t1w")
+        signature = ProtocolSignature(suffix="t1w")
+        bundle = _bundle(suffix="t1w", support=resolved.support, context_suffix=resolved.context_suffix, protocol_signature=signature)
+        assert bundle.context_suffix == "T1w"
+        with pytest.raises(ValidationError, match="context suffix other than its own"):
+            _flair_bundle(suffix="t2w")
 
     def test_supported_uses_own_context(self):
         with pytest.raises(ValidationError, match="uses its own context"):
