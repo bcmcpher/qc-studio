@@ -22,7 +22,7 @@ from evidence_bundle.view_rules import (
 
 IQMS_DIR = Path(__file__).resolve().parents[1] / "evidence_bundle" / "iqms"
 
-RULE_EXAMPLES = {"motion": ["fd_mean", "fd_perc", "cjv"], "noise": ["snr_total", "efc", "fber", "qi_1", "gsr_x"]}
+RULE_EXAMPLES = {"motion": ["fd_mean", "fd_num", "fd_perc"], "noise": ["snr_total", "efc", "fber", "qi_1", "gsr_x"]}
 """One or more metric names per rule; each must fire that rule and no other."""
 
 
@@ -72,7 +72,7 @@ class TestRuleTable:
         metrics = [_metric("fd_mean"), _metric("efc", flagged=False), _metric("snr_total", flagged=False)]
         assert [rule.name for rule, _ in fired_rules(metrics)] == ["motion"]
 
-    @pytest.mark.parametrize("metric", ["inu_med", "wm2max", "tsnr", "dvars_std", "cnr"])
+    @pytest.mark.parametrize("metric", ["cjv", "inu_med", "wm2max", "tsnr", "dvars_std", "cnr"])
     def test_other_flags_fire_nothing(self, metric):
         assert fired_rules([_metric(metric)]) == []
 
@@ -80,7 +80,7 @@ class TestRuleTable:
         assert fired_rules([_metric("fd_mean", flagged=False), _metric("efc", flagged=False)]) == []
 
     def test_both_rules_fire_in_table_order(self):
-        fired = fired_rules([_metric("efc"), _metric("cjv")])
+        fired = fired_rules([_metric("efc"), _metric("fd_mean")])
         assert [(rule.name, control) for rule, control in fired] == [("motion", False), ("noise", False)]
 
     def test_every_trigger_matches_a_catalog_metric(self):
@@ -119,7 +119,7 @@ class TestRenderTargeted:
     def test_views_follow_the_rule(self, tmp_path):
         image, mask = _volume(tmp_path)
         scene = prepare_scene(image, mask_path=mask)
-        views = render_targeted_views(scene, tmp_path / "out", [_metric("cjv"), _metric("snr_total")])
+        views = render_targeted_views(scene, tmp_path / "out", [_metric("fd_mean"), _metric("snr_total")])
         by_rule = {v.rule: v for v in views}
         motion, noise = (next(r for r in FLAG_RULES if r.name == n) for n in ("motion", "noise"))
         assert by_rule["motion"].plane == "sagittal"
@@ -131,7 +131,7 @@ class TestRenderTargeted:
     def test_no_flags_no_overlay_no_views(self, tmp_path):
         image, mask = _volume(tmp_path)
         scene = prepare_scene(image, mask_path=mask)
-        assert render_targeted_views(scene, tmp_path / "out", [_metric("cjv", flagged=False)]) == []
+        assert render_targeted_views(scene, tmp_path / "out", [_metric("fd_mean", flagged=False)]) == []
         assert not (tmp_path / "out").exists()
 
     def test_mask_overlay_without_flags(self, tmp_path):
@@ -155,7 +155,7 @@ class TestRenderTargeted:
     def test_deterministic(self, tmp_path):
         image, mask = _volume(tmp_path)
         scene = prepare_scene(image, mask_path=mask)
-        metrics = [_metric("cjv"), _metric("efc")]
+        metrics = [_metric("fd_mean"), _metric("efc")]
         a = render_targeted_views(scene, tmp_path / "a", metrics, overlay_path=mask)
         render_targeted_views(scene, tmp_path / "b", metrics, overlay_path=mask)
         for view in a:

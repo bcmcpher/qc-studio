@@ -133,11 +133,12 @@ Metadata sources found in `sample_data/`:
 - **The pipeline's mask places the slices and is audited.** When `overlay_mri_image_path` is
   a mask or segmentation on the image grid, it sets the bounding box for `bbox_fraction`
   placement and is drawn as outlines in mask overlay views. The threshold head mask is only a
-  last resort; it includes the neck, so the inferior slice can land below the brain.
-- **Targeted-view rule table.** `motion`: flags on `fd_mean`, `fd_num`, `fd_perc` or `cjv`
-  (MRIQC has no direct motion IQM for anatomical scans; CJV rises with head motion) add four
-  lateral sagittal slices. `noise`: flags on `snr_*`, `efc`, `fber`, `qi_1` or `gsr_*` add
-  axial slices with a window of the 0.5th to 50th percentile, which saturates the head and
+  last resort; it includes the neck, so the inferior slice can land below the brain. The user
+  accepted it as a computed fallback (2026-11-13).
+- **Targeted-view rule table.** `motion`: flags on `fd_mean`, `fd_num` or `fd_perc` add four
+  lateral sagittal slices. It is limited to bold, the only data with a motion trace (user,
+  2026-11-13); a high T1w CJV is still flagged as a metric but adds no view. `noise`: flags
+  on `snr_*`, `efc`, `fber`, `qi_1` or `gsr_*` add axial slices with a window of the 0.5th to 50th percentile, which saturates the head and
   shows the background. Mask overlay views (one per core plane) are added whenever an overlay
   is set, so they are never controls.
 - **`PACKAGE.md` via `str.format`.** Ported as is from `render_markdown_template`.

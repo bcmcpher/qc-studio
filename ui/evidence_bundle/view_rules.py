@@ -37,9 +37,9 @@ class ViewRule:
 FLAG_RULES: tuple[ViewRule, ...] = (
     ViewRule(
         name="motion",
-        # Framewise displacement (bold); CJV rises with head motion in T1w (MRIQC docs). MRIQC
-        # has no direct motion IQM for anatomical scans.
-        metrics=("fd_mean", "fd_num", "fd_perc", "cjv"),
+        # Framewise displacement: bold only. A 3D anatomical scan has no motion trace; a high
+        # CJV there is flagged as a metric but adds no motion view.
+        metrics=("fd_mean", "fd_num", "fd_perc"),
         plane="sagittal",
         mni_coords=(-50.0, -40.0, 40.0, 50.0),
         bbox_fractions=(0.15, 0.25, 0.75, 0.85),
