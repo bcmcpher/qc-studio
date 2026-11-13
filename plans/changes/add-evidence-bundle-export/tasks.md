@@ -24,17 +24,18 @@
 
 ## 2. Statistics — `ui/evidence_bundle/stats.py` and `acquisition.py`
 
-- [ ] 2.1 Check the reference parquet columns for T1w and T2w (sequence fields, voxel size) and whether `T2w.parquet` is served; record the result in `design.md`
-- [ ] 2.2 Extract acquisition metadata from the MRIQC JSON `bids_meta` and `provenance`, the BIDS sidecar, and the NIfTI header (`acquisition.py`)
-- [ ] 2.3 Build the protocol signature with the rounding in `constants.py`
+- [x] 2.1 Check the reference parquet columns for T1w and T2w (sequence fields, voxel size) and whether `T2w.parquet` is served; record the result in `design.md`
+- [x] 2.2 Extract acquisition metadata from the MRIQC JSON `bids_meta` and `provenance`, the BIDS sidecar, and the NIfTI header (`acquisition.py`)
+- [x] 2.3 Build the protocol signature with the rounding in `constants.py`
 - Decision (2026-11-13): TE rounds to 0.1 ms (0.0001 s in sidecar units), not 1 ms, so the spec's 2.9 ms vs 3.5 ms deviation scenario holds. `design.md` updated.
-- [ ] 2.4 Acquisition check: compare each signature field with the project's modal value for the same suffix (and site when known); record deviations
-- [ ] 2.5 Write robust project statistics (median, MAD, empirical percentile) within the signature stratum; drop signature fields in the fixed fallback order below the minimum stratum size; never drop `suffix`, `MRAcquisitionType` or `MagneticFieldStrength`
-- [ ] 2.6 Get reference percentiles through `utils.reference_data.filter_reference_iqm`, extended to the signature fields that the reference data holds (result of 2.1); skip the reference for `fallback` and `unsupported` bundles and record why; drop the duplicate sandbox filter `filter_reference_by_metadata` and record that in the commit
-- [ ] 2.7 Write direction-aware flags with thresholds in `ui/evidence_bundle/constants.py`, including two-sided flags for `outside_range`
-- [ ] 2.8 Assign the context category (`scan`, `protocol`, `project`, `normal`)
-- [ ] 2.9 Write the robust Mahalanobis outlier score in numpy, with shrinkage covariance and top contributors; do not add scikit-learn
-- [ ] 2.10 Tests on synthetic data: signature rounding; one off-protocol scan (TR changed) reported as a deviation and excluded from the others' stratum; fallback order; T1w and T2w never mixed; a FLAIR scan stratified only with FLAIR scans and given no reference percentiles; an `unsupported` scan gets percentiles but no flags; known percentiles; both flag directions and `outside_range`; all four categories; an injected outlier ranked first
+- [x] 2.4 Acquisition check: compare each signature field with the project's modal value for the same suffix (and site when known); record deviations
+- [x] 2.5 Write robust project statistics (median, MAD, empirical percentile) within the signature stratum; drop signature fields in the fixed fallback order below the minimum stratum size; never drop `suffix`, `MRAcquisitionType` or `MagneticFieldStrength`
+- [x] 2.6 Get reference percentiles through `utils.reference_data.filter_reference_iqm`, extended to the signature fields that the reference data holds (result of 2.1); skip the reference for `fallback` and `unsupported` bundles and record why; drop the duplicate sandbox filter `filter_reference_by_metadata` and record that in the commit
+- [x] 2.7 Write direction-aware flags with thresholds in `ui/evidence_bundle/constants.py`, including two-sided flags for `outside_range`
+- [x] 2.8 Assign the context category (`scan`, `protocol`, `project`, `normal`)
+- [x] 2.9 Write the robust Mahalanobis outlier score in numpy, with shrinkage covariance and top contributors; do not add scikit-learn
+- [x] 2.10 Tests on synthetic data: signature rounding; one off-protocol scan (TR changed) reported as a deviation and excluded from the others' stratum; fallback order; T1w and T2w never mixed; a FLAIR scan stratified only with FLAIR scans and given no reference percentiles; an `unsupported` scan gets percentiles but no flags; known percentiles; both flag directions and `outside_range`; all four categories; an injected outlier ranked first
+  - As built (2026-11-13): `acquisition.py` (`extract_acquisition`, `nifti_geometry`, `protocol_signature`, `acquisition_deviations`) and `stats.py` (`select_stratum`, `reference_subset`, `metric_flags`, `outlier_score`, `scan_statistics`). 2.1: columns read from `scripts/fetch_mriqc_reference.py` (IQMs + `Manufacturer`, `MagneticFieldStrength`, `ManufacturersModelName`; voxel size via `spacing_*`; no sequence fields; no T2w fetched); host not checked, so a real-data check remains. TR rounds to 1 ms (user, 2026-11-13). Cutoffs in `StatsConfig` (min stratum 10, robust z 3.0, reference percentile 2.5/97.5), recorded as `EvidenceBundle.stats_config`. `filter_reference_frame` split out of `filter_reference_iqm` (adds voxel size) so an export loads each parquet once; the sandbox filter `filter_reference_by_metadata` is replaced by it. Without geometry from an image, `extract_acquisition` uses the MRIQC `size_*`/`spacing_*` IQMs. Non-finite IQMs are skipped and listed. The outlier score uses directional metrics with evidence, standardized by median/MAD, member z clipped at 5, Ledoit–Wolf shrinkage; its percentile is against the stratum members' own scores. Tests: 54 in `ui/tests/test_evidence_bundle_stats.py`, synthetic reference tables built in the tests.
 
 ## 3. Rendering — `ui/evidence_bundle/render.py`
 

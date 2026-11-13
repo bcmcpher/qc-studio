@@ -149,6 +149,8 @@ SHALL always use the actual `suffix`. A user-supplied map SHALL replace the defa
 
 The system SHALL give each metric its value, direction of concern, project percentile,
 reference percentile, flags and context category (`scan`, `protocol`, `project` or `normal`).
+The minimum stratum size and the flag cutoffs SHALL be configurable per export, and each
+bundle SHALL record the values used.
 Reference percentiles SHALL use `filter_reference_iqm` with the signature fields that the
 reference data holds.
 
@@ -167,6 +169,12 @@ reference data holds.
 
 - **WHEN** a metric is normal in the project but an outlier in the reference
 - **THEN** its context category is `protocol`
+
+#### Scenario: Laxer project cutoff
+
+- **WHEN** a project exports with `project_z_threshold` 2.0 and a metric has robust z 2.5 in its direction of concern
+- **THEN** the metric is flagged `project_outlier`, although the default cutoff of 3.0 would not flag it
+- **AND** the bundle's `stats_config` records the cutoff of 2.0
 
 #### Scenario: Filter recorded
 

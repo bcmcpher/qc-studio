@@ -9,11 +9,23 @@ preparation logic.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+_UI_DIR = Path(__file__).resolve().parents[1] / "ui"
+if str(_UI_DIR) not in sys.path:
+    sys.path.insert(0, str(_UI_DIR))
+
+from utils.reference_data import (  # noqa: E402
+    MAX_REFERENCE_ROWS,
+    filter_reference_frame,
+    normalize_field_strength,
+    normalize_manufacturer,
+)
 
 
 BIDS_METADATA_FIELDS = [
@@ -49,8 +61,6 @@ ALWAYS_HIGHLIGHT_T1W = {
 }
 
 
-_UNKNOWN_VALUES = {"", "unknown", "n/a", "none"}
-_STRATIFY_FIELDS = ["Manufacturer", "MagneticFieldStrength", "ManufacturersModelName"]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -115,35 +125,6 @@ def load_reference_iqms(reference_path: Path) -> pd.DataFrame:
     return read_table(reference_path)
 
 
-def _is_known(value: Any) -> bool:
-    return value is not None and str(value).strip().lower() not in _UNKNOWN_VALUES
-
-
-def filter_reference_by_metadata(
-    reference_df: pd.DataFrame,
-    subject_metadata: dict[str, Any],
-) -> pd.DataFrame:
-    """Narrow the reference population to scanner-matched rows when possible."""
-    df = reference_df
-
-    for field in _STRATIFY_FIELDS:
-        if field not in df.columns:
-            continue
-
-        subject_value = subject_metadata.get(field)
-
-        if _is_known(subject_value):
-            mask = df[field].astype(str).str.strip() == str(subject_value).strip()
-        else:
-            mask = df[field].astype(str).str.strip().str.lower().isin(_UNKNOWN_VALUES)
-
-        filtered = df[mask]
-        if not filtered.empty:
-            df = filtered
-
-    return df
-
-
 def compute_reference_stats(
     metric_name: str,
     value: float,
@@ -201,7 +182,13 @@ def enrich_iqms(
     subject_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach reference stats and optional semantic context to every IQM."""
-    filtered_ref = filter_reference_by_metadata(reference_df, subject_metadata or {})
+    metadata = subject_metadata or {}
+    filtered_ref = filter_reference_frame(
+        reference_df,
+        normalize_manufacturer(metadata.get("Manufacturer")),
+        normalize_field_strength(metadata.get("MagneticFieldStrength")),
+        MAX_REFERENCE_ROWS,
+    )
     enriched = []
 
     for metric_name, value in sorted(subject_iqms.items()):

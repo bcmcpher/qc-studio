@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import pandas as pd
 import requests
 
 from utils.data_loaders import load_parquet_table
@@ -126,19 +127,23 @@ def _load_reference_parquet(modality: str):
     return load_parquet_table(local_parquet_path)
 
 
-def filter_reference_iqm(
-    modality: str,
+VOXEL_SIZE_COLUMNS = ("spacing_x", "spacing_y", "spacing_z")
+"""MRIQC IQM columns that hold the voxel size in mm."""
+
+
+def filter_reference_frame(
+    data,
     manufacturer_norm: str,
     field_strength_norm: Optional[str],
     max_rows: int,
+    voxel_size: Optional[tuple[float, float, float]] = None,
+    voxel_step: float = 0.1,
 ):
-    """Filter the reference table by already-normalized scanner values.
+    """Filter an already-loaded reference table by normalized scanner values.
 
-    Expects pre-normalized manufacturer/field-strength so equivalent raw
-    spellings (e.g. "GE", "General Electric") share one cache entry upstream.
+    ``voxel_size`` (mm, already rounded to ``voxel_step``) keeps rows whose ``spacing_*``
+    columns round to the same values; it is skipped when the columns are missing.
     """
-    data = _load_reference_parquet(modality)
-
     # TODO: Add a dedicated reference-data cleaning step before filtering (#82).
     if manufacturer_norm != "unknown" and "Manufacturer" in data.columns:
         manufacturer_col_norm = data["Manufacturer"].map(normalize_manufacturer)
@@ -148,7 +153,30 @@ def filter_reference_iqm(
         field_strength_col_norm = data["MagneticFieldStrength"].map(normalize_field_strength)
         data = data[field_strength_col_norm == field_strength_norm]
 
+    if voxel_size is not None and all(c in data.columns for c in VOXEL_SIZE_COLUMNS):
+        mask = True
+        for column, size in zip(VOXEL_SIZE_COLUMNS, voxel_size):
+            spacing = pd.Series(pd.to_numeric(data[column], errors="coerce"), index=data.index, dtype=float)
+            mask = mask & ((spacing / voxel_step).round() == round(size / voxel_step))
+        data = data[mask]
+
     if len(data) > max_rows:
         data = data.sample(n=max_rows, random_state=42)
 
     return data
+
+
+def filter_reference_iqm(
+    modality: str,
+    manufacturer_norm: str,
+    field_strength_norm: Optional[str],
+    max_rows: int,
+    voxel_size: Optional[tuple[float, float, float]] = None,
+):
+    """Load the modality's reference table and filter it by already-normalized scanner values.
+
+    Expects pre-normalized manufacturer/field-strength so equivalent raw
+    spellings (e.g. "GE", "General Electric") share one cache entry upstream.
+    """
+    data = _load_reference_parquet(modality)
+    return filter_reference_frame(data, manufacturer_norm, field_strength_norm, max_rows, voxel_size)

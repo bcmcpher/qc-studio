@@ -9,6 +9,13 @@ from typing import Any, Literal, Mapping, Optional, Sequence, Union, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .constants import (
+    DEFAULT_MIN_STRATUM_SIZE,
+    DEFAULT_PROJECT_Z_THRESHOLD,
+    DEFAULT_REFERENCE_PERCENTILE_HIGH,
+    DEFAULT_REFERENCE_PERCENTILE_LOW,
+)
+
 SCHEMA_VERSION = "0.1.0"
 
 DirectionOfConcern = Literal[
@@ -313,6 +320,23 @@ class AcquisitionDeviation(_Strict):
     """Number of scans compared."""
 
 
+class StatsConfig(_Strict):
+    """Statistical cutoffs for one export. Projects may set them; each bundle records them."""
+
+    min_stratum_size: int = Field(default=DEFAULT_MIN_STRATUM_SIZE, ge=2)
+    """Fewest other scans a project stratum (or reference rows a reference subset) must hold."""
+    project_z_threshold: float = Field(default=DEFAULT_PROJECT_Z_THRESHOLD, gt=0)
+    """Robust z beyond which a metric is a project outlier in its direction of concern."""
+    reference_percentile_low: float = Field(default=DEFAULT_REFERENCE_PERCENTILE_LOW, ge=0, le=100)
+    reference_percentile_high: float = Field(default=DEFAULT_REFERENCE_PERCENTILE_HIGH, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _check_order(self):
+        if self.reference_percentile_low >= self.reference_percentile_high:
+            raise ValueError("reference_percentile_low must be below reference_percentile_high")
+        return self
+
+
 class RaterQC(_Strict):
     """The rater's QC for this scan, from a ``*_qc_status.tsv``."""
 
@@ -340,6 +364,8 @@ class EvidenceBundle(_Strict):
     acquisition: AcquisitionMetadata = Field(default_factory=AcquisitionMetadata)
     protocol_signature: Optional[ProtocolSignature] = None
     acquisition_deviations: list[AcquisitionDeviation] = Field(default_factory=list)
+    stats_config: StatsConfig = Field(default_factory=StatsConfig)
+    """The cutoffs that produced the percentiles, flags and strata in this bundle."""
     project: DistributionContext
     reference: Optional[DistributionContext] = None
     metrics: list[MetricEvidence]
