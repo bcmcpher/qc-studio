@@ -85,7 +85,7 @@ Metadata sources found in `sample_data/`:
   |---|---|---|
   | `supported` | `T1w`, `T2w` | Own context; project and reference percentiles. |
   | `fallback` | mapped (default `FLAIR`→`T2w`, `T2starw`→`T2w`) | Context of the mapped suffix. Project-only percentiles. The forced set (`wm2max`, `cjv`, `tpm_overlap_*`, `icvs_*`, `rpve_*`) becomes `context_dependent`. |
-  | `unsupported` | anything unmapped (for example `PDw`) | IQMs, metadata, views and percentiles are written. All metrics are `context_dependent`, so there are no flags. Adapters skip the bundle. |
+  | `unsupported` | anything unmapped (for example `PDw`) | IQMs, metadata, views and percentiles are written. All metrics are `context_dependent` with `evidence_strength` `none`, so there are no flags. `display_name` and `category` come from the modality's base catalog (`anat.json` for anatomical suffixes), because they do not depend on contrast; an IQM missing from it gets its own name and `uncategorized`. Adapters skip the bundle. |
 
   The fallback changes only how metrics are interpreted. Stratification always uses the actual
   `suffix`, so a FLAIR scan is compared only with FLAIR scans. Fallback scans get no reference

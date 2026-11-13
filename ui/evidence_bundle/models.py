@@ -381,6 +381,9 @@ class EvidenceBundle(_Strict):
             interpreted = [m.name for m in self.metrics if m.direction_of_concern != "context_dependent"]
             if interpreted:
                 raise ValueError(f"every metric of an unsupported bundle is context_dependent: {interpreted}")
+            weighted = [m.name for m in self.metrics if m.evidence_strength != "none"]
+            if weighted:
+                raise ValueError(f"every metric of an unsupported bundle has evidence_strength 'none': {weighted}")
         return self
 
     def flagged_metrics(self) -> list[str]:

@@ -20,6 +20,7 @@
   - As built: `resolve_context(suffix, contrast_map)` in `context.py`. Constants in `ui/evidence_bundle/constants.py`. Every suffix in `CONTEXT_FILES` is `supported`, so `bold` and `dwi` are too; a user map cannot demote a supported suffix, and its targets must have their own context. `unsupported` bundles require every metric `context_dependent` (so no flags) and a null `context_suffix`.
 - [x] 1.8 Tests: allowlist drops identifying sidecar fields; T1w and T2w contexts load; the T2w override applies; `FLAIR` resolves to `T2w` context with the forced set `context_dependent`; `PDw` resolves to `unsupported`; a user map overrides the default
   - As built: 90 tests in `ui/tests/test_evidence_bundle_models.py`.
+  - Review (2026-11-13): floats reject NaN/inf; an unknown `direction_of_concern` error names the metric; suffixes and contrast-map keys match case-insensitively; `load_metric_context` returns deep copies. `unsupported` bundles also require `evidence_strength` `none`; the exporter takes `display_name`/`category` from the base catalog (see `design.md`, contrast support).
 
 ## 2. Statistics — `ui/evidence_bundle/stats.py` and `acquisition.py`
 

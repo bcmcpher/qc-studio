@@ -460,15 +460,20 @@ class TestSupportValidators:
             suffix="PDw",
             support="unsupported",
             context_suffix=None,
-            metrics=[_metric("cnr", direction_of_concern="context_dependent", context_category=None)],
+            metrics=[_metric("cnr", direction_of_concern="context_dependent", context_category=None, evidence_strength="none")],
         )
         assert bundle.flagged_metrics() == []
+
+    def test_unsupported_metrics_have_no_evidence_strength(self):
+        metrics = [_metric("cnr", direction_of_concern="context_dependent", context_category=None)]
+        with pytest.raises(ValidationError, match="evidence_strength 'none'"):
+            _flair_bundle(suffix="PDw", support="unsupported", context_suffix=None, metrics=metrics)
 
     def test_unsupported_metrics_context_dependent(self):
         with pytest.raises(ValidationError, match="context_dependent"):
             _flair_bundle(suffix="PDw", support="unsupported", context_suffix=None)
 
     def test_unsupported_has_no_context_suffix(self):
-        metrics = [_metric("cnr", direction_of_concern="context_dependent", context_category=None)]
+        metrics = [_metric("cnr", direction_of_concern="context_dependent", context_category=None, evidence_strength="none")]
         with pytest.raises(ValidationError, match="no context suffix"):
             _flair_bundle(suffix="PDw", support="unsupported", metrics=metrics)

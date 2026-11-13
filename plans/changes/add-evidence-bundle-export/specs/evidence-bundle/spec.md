@@ -104,7 +104,8 @@ NOT reject a scan because of its contrast. Suffixes with their own context SHALL
 `supported`. Suffixes in the fallback map SHALL be `fallback`: they use the mapped suffix's
 context, get no reference percentiles, and treat the forced set of contrast-sensitive metrics
 as `context_dependent`. Other suffixes SHALL be `unsupported`: their bundle holds IQMs,
-metadata, views and project percentiles, with every metric `context_dependent`. Stratification
+metadata, views and project percentiles, with every metric `context_dependent` and
+`evidence_strength` `none`, and names and categories from the modality's base catalog. Stratification
 SHALL always use the actual `suffix`. A user-supplied map SHALL replace the default map.
 
 #### Scenario: FLAIR uses T2w context
@@ -132,6 +133,7 @@ SHALL always use the actual `suffix`. A user-supplied map SHALL replace the defa
 
 - **WHEN** a `PDw` scan is exported with the default map
 - **THEN** a bundle is written with `support` `unsupported` and no flags
+- **AND** `cjv` has `display_name` and `category` from `anat.json` and `evidence_strength` `none`
 
 #### Scenario: User map
 
