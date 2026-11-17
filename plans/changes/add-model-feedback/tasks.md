@@ -23,9 +23,28 @@ As built (section 1):
 
 ## 2. Adapter interface — `sandbox/model_adapters/base.py`
 
-- [ ] 2.1 Write the `ModelAdapter` protocol: `name`, `model_id`, `send(bundle_dir) -> FeedbackResult`
-- [ ] 2.2 Write shared helpers: prompt from a template that wraps `PACKAGE.md`, prompt hash, JSON extraction (code fences, first object), validation through `feedback.py`
-- [ ] 2.3 Tests with a fake adapter that returns canned replies
+- [x] 2.1 Write the `ModelAdapter` protocol: `name`, `model_id`, `send(bundle_dir) -> FeedbackResult`
+- [x] 2.2 Write shared helpers: prompt from a template that wraps `PACKAGE.md`, prompt hash, JSON extraction (code fences, first object), validation through `feedback.py`
+- [x] 2.3 Tests with a fake adapter that returns canned replies
+
+As built (section 2):
+
+- `ModelAdapter` is an abstract base class rather than a `typing.Protocol`: it is the interface
+  (`name`, `model_id`, `send`) and holds the shared flow. Subclasses implement only
+  `complete(prompt, images)`, which returns reply text or a parsed object.
+- The data-use rule is in the base constructor, so every adapter refuses images without the
+  acknowledgement before any request (tasks 3.4 and 4.4 inherit it).
+- The template is `sandbox/model_adapters/prompt.md` (`string.Template`, so braces and `$` in
+  `PACKAGE.md` need no escaping). It holds the role, the rules from the sandbox
+  `image_evidence_exp` template adapted to the bundle (flags only from "Flagged metrics",
+  deviations as protocol notes, fallback caution, the reason limits) and the reply fields.
+  The sandbox "default to pass" heuristics were left out; the evaluation can add them back.
+- The prompt hash covers the rendered prompt and each attached image's name and bytes, so
+  re-rendered views also mark feedback stale. IQMs-only runs hash the prompt alone.
+- `send` raises only when `bundle.json` is unreadable; a missing `PACKAGE.md` or view, or a
+  model error, becomes an `error` result.
+- Adapter tests are in `ui/tests/test_model_adapters.py` (sandbox path added in the test), so CI
+  runs them without model SDKs.
 
 ## 3. Claude adapter — `sandbox/model_adapters/claude.py`
 
