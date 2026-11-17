@@ -1,15 +1,30 @@
 ## 1. Feedback schema and validation — `ui/evidence_bundle/feedback.py`
 
-- [ ] 1.1 Write `QCFeedback` from sandbox `QCDecision`; add optional `image_observations`
-- [ ] 1.2 Write `FeedbackResult`: `status` (`ok`, `error`, `skipped_unsupported`), model id, adapter name, settings, prompt hash, bundle schema version, bundle `support` and `context_suffix`, timestamp, raw reply, `schema_valid`, `consistency_errors`, parsed feedback
-- [ ] 1.3 Write `check_consistency(feedback, bundle)`: flagged metrics ⊆ bundle flags, each flagged metric named in a reason, reason count within limits, follow-up present when decision is not `pass`
-- [ ] 1.4 Write `load_feedback(path)` / `write_feedback(path, result)`
-- [ ] 1.5 Tests: valid reply passes; each consistency rule fails on its own; invalid JSON stored with `schema_valid=False`
+- [x] 1.1 Write `QCFeedback` from sandbox `QCDecision`; add optional `image_observations`
+- [x] 1.2 Write `FeedbackResult`: `status` (`ok`, `error`, `skipped_unsupported`), model id, adapter name, settings, prompt hash, bundle schema version, bundle `support` and `context_suffix`, timestamp, raw reply, `schema_valid`, `consistency_errors`, parsed feedback
+- [x] 1.3 Write `check_consistency(feedback, bundle)`: flagged metrics ⊆ bundle flags, each flagged metric named in a reason, reason count within limits, follow-up present when decision is not `pass`
+- [x] 1.4 Write `load_feedback(path)` / `write_feedback(path, result)`
+- [x] 1.5 Tests: valid reply passes; each consistency rule fails on its own; invalid JSON stored with `schema_valid=False`
+
+As built (section 1):
+
+- `FeedbackResult` also has `endpoint` (the cloud endpoint, task 3.5), `schema_errors` (the
+  validation errors the spec's "Invalid reply kept" scenario stores) and `error` (status
+  `error`). A validator ties the fields to the status: parsed feedback only when
+  `schema_valid`; `ok` holds the raw reply; `skipped_unsupported` only for unsupported bundles.
+- JSON extraction (`extract_json`: code fence, then first object) and `parse_reply` live in
+  `feedback.py`, not `base.py`, so one function validates every reply. `parse_reply` also takes
+  an already-parsed object, for Claude tool input. Adapters build results with
+  `reply_result`, `error_result` and `skipped_result`.
+- `QCFeedback` rejects unknown fields (`extra="forbid"`, as every bundle model). Blank
+  reasons and follow-ups do not count.
+- `write_feedback` writes to a temporary file and renames it, so a failed write keeps the
+  earlier result. `load_feedback`/`write_feedback` accept a bundle folder or the file path.
 
 ## 2. Adapter interface — `sandbox/model_adapters/base.py`
 
 - [ ] 2.1 Write the `ModelAdapter` protocol: `name`, `model_id`, `send(bundle_dir) -> FeedbackResult`
-- [ ] 2.2 Write shared helpers: prompt from `PACKAGE.md`, prompt hash, JSON extraction (code fences, first object), validation through `feedback.py`
+- [ ] 2.2 Write shared helpers: prompt from a template that wraps `PACKAGE.md`, prompt hash, JSON extraction (code fences, first object), validation through `feedback.py`
 - [ ] 2.3 Tests with a fake adapter that returns canned replies
 
 ## 3. Claude adapter — `sandbox/model_adapters/claude.py`

@@ -38,6 +38,12 @@ Sandbox state:
 - **Reason count as a consistency rule, not a schema rule.** The schema accepts any list; the
   consistency validator enforces limits from `constants.py`. A reply with the wrong count is
   stored and marked inconsistent, not discarded, so evaluation can count it.
+- **Reason limits 1 to 7.** The sandbox required 4 to 7, which forces filler reasons for a
+  clean scan with no flags. `MIN_REASONS = 1`, `MAX_REASONS = 7` in `constants.py`.
+- **Prompt template in the adapter layer.** `PACKAGE.md` is evidence only (the export change
+  removed the task and reply rules from it). A template in `sandbox/model_adapters/` holds the
+  role, task and reply rules and inserts `PACKAGE.md`; the prompt hash covers the whole
+  rendered prompt.
 - **One result file per run.** `feedback.json` always holds a `FeedbackResult`: metadata, raw
   reply, `schema_valid`, `consistency_errors`, and the parsed `QCFeedback` when valid. This
   replaces the `result.json`/`result_error.json` pair.
@@ -66,12 +72,13 @@ Sandbox state:
   both on the same bundles before a default is chosen.
 - [No local NVIDIA GPU on the dev machine] → LLaVA adapter tested with a stubbed model;
   real runs on lab or HPC hardware.
-- [Prompt drift between adapters] → prompts render from the bundle's `PACKAGE.md`; the prompt
-  hash is stored.
+- [Prompt drift between adapters] → every adapter renders one shared template around the
+  bundle's `PACKAGE.md`; the prompt hash is stored.
 
 ## Open Questions
 
 - Do adapters move into `ui/` after evaluation, or into a separate optional package? Deferred
   until `add-feedback-evaluation` reports.
-- Reason-count limits: keep 4–7 from the sandbox, or derive from the number of bundle flags?
+- Default Claude model: `claude-sonnet-5-5` (the sandbox used `claude-sonnet-4-6`); `--model`
+  overrides it. Decided 2026-11-17.
 - Which LLaVA-OneVision size is the reference local model (4B now, 8B needs more compute)?

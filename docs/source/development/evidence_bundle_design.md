@@ -141,7 +141,7 @@ One directory per scan:
 ```text
 <out_dir>/<participant_id>/<session_id>/<pipeline>/<qc_task>/
   bundle.json     # schema-versioned evidence (see below)
-  PACKAGE.md      # prompt rendering of bundle.json
+  PACKAGE.md      # Markdown rendering of bundle.json (evidence only; adapters wrap it in their prompt)
   views/
     core_axial.png
     core_coronal.png
@@ -164,14 +164,24 @@ One directory per scan:
 ## Model feedback
 
 A model adapter returns feedback that validates against one schema: `decision`, `confidence`,
-`summary`, `reasons`, `flagged_metrics` and `recommended_followup`.
+`summary`, `reasons`, `flagged_metrics`, `recommended_followup` and optional
+`image_observations`. The schema and both validation levels live in
+`ui/evidence_bundle/feedback.py`, so the UI can read feedback without model dependencies.
 
 Validation has two levels.
 
 1. **Schema validation.** The reply parses and matches the schema.
 2. **Consistency validation.** Each flagged metric is flagged in the bundle. The flagged metrics
-   match the reasons. The count of reasons is within limits. Follow-up is present when the
+   match the reasons: each flagged metric name appears in a reason, compared case-insensitively.
+   The count of reasons is 1 to 7 (`MIN_REASONS`, `MAX_REASONS`). Follow-up is present when the
    decision is not `pass`.
+
+A reply that fails either level is stored, not discarded. `feedback.json` holds the raw reply
+and the errors, so the evaluation can count them.
+
+`PACKAGE.md` holds evidence only. Each adapter renders its prompt from a template that holds the
+task and the reply rules, with `PACKAGE.md` inserted. The prompt hash covers the full rendered
+prompt, so a template change marks earlier feedback as stale.
 
 ## Evaluation
 

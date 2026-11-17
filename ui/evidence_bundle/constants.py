@@ -113,3 +113,7 @@ BASE_CATALOG_SUFFIX: dict[str, str] = {"anat": "T1w", "func": "bold", "dwi": "dw
 
 ``T1w`` loads ``anat.json`` without overrides, the base catalog of anatomical scans.
 """
+
+MIN_REASONS = 1
+MAX_REASONS = 7
+"""Limits on the number of reasons in a model reply, checked by ``feedback.check_consistency``."""
