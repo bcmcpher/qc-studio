@@ -119,6 +119,8 @@ Metadata sources found in `sample_data/`:
   key, so `T1w` and `T2w` are never compared with each other.
 - **Robust statistics in numpy.** Median/MAD, empirical percentiles, Mahalanobis distance with
   shrinkage covariance. No scikit-learn.
+- **One outlier pass per stratum (user, 2026-11-17).** Every scan of a stratum is scored against
+  the others once; a scan's outlier percentile ranks its score among theirs.
 - **One reference filter.** `filter_reference_iqm` is extended, not duplicated. The sandbox's
   stepwise filter is dropped.
 - **Pillow for rendering.** Deterministic output, no matplotlib font or backend variation.

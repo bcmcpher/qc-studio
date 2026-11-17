@@ -283,31 +283,52 @@ def _distance(target: np.ndarray, members: np.ndarray, keep: np.ndarray) -> tupl
     return math.sqrt(max(float(contributions.sum()), 0.0)), contributions
 
 
-def outlier_score(target: np.ndarray, members: np.ndarray, names: Sequence[str]) -> Optional[OutlierScore]:
-    """Robust Mahalanobis distance of ``target`` from the stratum ``members`` (rows).
+def stratum_outlier_scores(matrix: np.ndarray, names: Sequence[str]) -> list[Optional[OutlierScore]]:
+    """Robust Mahalanobis score of every row of a stratum against the other rows.
 
-    Each metric is standardized by the members' median and MAD; metrics with a MAD of 0 are
-    left out. Member z-scores are clipped to ``OUTLIER_WINSOR_Z`` before the shrinkage
-    covariance, so one extreme member does not hide others. A metric's contribution is its
-    term ``z_i * (inverse covariance @ z)_i``; contributions sum to the squared distance.
+    Each metric is standardized by the other rows' median and MAD; metrics with a MAD of 0
+    over the whole stratum are left out. Z-scores of the other rows are clipped to
+    ``OUTLIER_WINSOR_Z`` before the shrinkage covariance, so one extreme scan does not hide
+    others. A metric's contribution is its term ``z_i * (inverse covariance @ z)_i``;
+    contributions sum to the squared distance.
 
-    The percentile compares the score with each member's score against the other members
-    (leave-one-out), so the target and the members are scored the same way.
+    Every row is scored the same way, so a row's percentile compares its score with the other
+    rows' scores. The whole stratum is scored once (``m`` distances for ``m`` rows), and every
+    scan of the stratum reads its result. Rows get None when fewer than 3 other rows remain or
+    every metric is constant.
     """
-    mad = MAD_SCALE * np.median(np.abs(members - np.median(members, axis=0)), axis=0)
+    rows = len(matrix)
+    mad = MAD_SCALE * np.median(np.abs(matrix - np.median(matrix, axis=0)), axis=0) if rows else np.zeros(0)
     keep = mad > 0
-    if not keep.any() or len(members) < 3:
-        return None
+    if rows < 4 or not keep.any():
+        return [None] * rows
     used = [n for n, k in zip(names, keep) if k]
-    score, contributions = _distance(target, members, keep)
-    member_scores = np.array([_distance(members[k], np.delete(members, k, axis=0), keep)[0] for k in range(len(members))])
-    order = [i for i in np.argsort(-contributions, kind="stable") if contributions[i] > 0][:OUTLIER_TOP_CONTRIBUTORS]
-    return OutlierScore(
-        score=score,
-        percentile=empirical_percentile(score, member_scores),
-        metrics_used=used,
-        top_contributors=[OutlierContributor(metric=used[i], contribution=float(contributions[i])) for i in order],
-    )
+    results = [_distance(matrix[k], np.delete(matrix, k, axis=0), keep) for k in range(rows)]
+    scores = np.array([score for score, _ in results])
+    outliers: list[Optional[OutlierScore]] = []
+    for k, (score, contributions) in enumerate(results):
+        order = [i for i in np.argsort(-contributions, kind="stable") if contributions[i] > 0][:OUTLIER_TOP_CONTRIBUTORS]
+        outliers.append(
+            OutlierScore(
+                score=score,
+                percentile=empirical_percentile(score, np.delete(scores, k)),
+                metrics_used=used,
+                top_contributors=[OutlierContributor(metric=used[i], contribution=float(contributions[i])) for i in order],
+            )
+        )
+    return outliers
+
+
+def outlier_score(target: np.ndarray, members: np.ndarray, names: Sequence[str]) -> Optional[OutlierScore]:
+    """Score of ``target`` in the stratum made of ``target`` and ``members`` (rows).
+
+    See ``stratum_outlier_scores``; scoring several scans of one stratum is cheaper there.
+    """
+    return stratum_outlier_scores(np.vstack([target, members]), names)[0]
+
+
+OutlierCache = dict[tuple[tuple[int, ...], tuple[str, ...]], list[Optional[OutlierScore]]]
+"""Stratum scores by (stratum scan indices, metric names), shared by the scans of one project."""
 
 
 # --- one scan ----------------------------------------------------------------------------
@@ -321,11 +342,13 @@ def scan_statistics(
     reference: Optional[Reference] = None,
     catalog: Optional[MetricContextFile] = None,
     reference_unavailable: Optional[str] = None,
+    outlier_cache: Optional[OutlierCache] = None,
 ) -> ScanStatistics:
     """Compute metrics, distributions and the outlier score for ``scans[index]``.
 
     ``reference`` is the loaded reference table for the scan's suffix; ``catalog`` is the base
-    catalog used to name the metrics of an unsupported scan.
+    catalog used to name the metrics of an unsupported scan. Pass one ``outlier_cache`` for all
+    scans of a project, so each stratum is scored once.
     """
     scan = scans[index]
     members, project = select_stratum(index, scans, config)
@@ -370,7 +393,10 @@ def scan_statistics(
     scored = [m.name for m in metrics if m.direction_of_concern in DIRECTIONAL and m.evidence_strength != "none"]
     scored = [n for n in scored if all(math.isfinite(scans[j].iqms.get(n, math.nan)) for j in members)]
     if members and scored:
-        target = np.array([scan.iqms[n] for n in scored])
-        matrix = np.array([[scans[j].iqms[n] for n in scored] for j in members])
-        outlier = outlier_score(target, matrix, scored)
+        stratum = tuple(sorted([index, *members]))
+        key = (stratum, tuple(scored))
+        cache = outlier_cache if outlier_cache is not None else {}
+        if key not in cache:
+            cache[key] = stratum_outlier_scores(np.array([[scans[j].iqms[n] for n in scored] for j in stratum]), scored)
+        outlier = cache[key][stratum.index(index)]
     return ScanStatistics(metrics=metrics, project=project, reference=ref_context, outlier=outlier, skipped=skipped)

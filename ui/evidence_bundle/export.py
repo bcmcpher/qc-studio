@@ -48,7 +48,7 @@ from evidence_bundle.models import (  # noqa: E402
     ViewRef,
 )
 from evidence_bundle.render import prepare_scene, render_core_views  # noqa: E402
-from evidence_bundle.stats import ReferenceTable, ScanInput, scan_statistics  # noqa: E402
+from evidence_bundle.stats import OutlierCache, ReferenceTable, ScanInput, scan_statistics  # noqa: E402
 from evidence_bundle.view_rules import fired_rules, render_overlay_views, render_targeted_views  # noqa: E402
 from utils import reference_data  # noqa: E402
 from utils.cohort import build_qc_cohort, normalize_participant_id_bids, normalize_session_id_bids, parse_session_list  # noqa: E402
@@ -156,6 +156,8 @@ class Project:
     index: dict[str, int]
     inputs: list[ScanInput]
     deviations: list[list[AcquisitionDeviation]]
+    outlier_cache: OutlierCache = field(default_factory=dict)
+    """Stratum outlier scores, so each stratum of the project is scored once."""
 
 
 def _row_iqms(row: Mapping[str, Any]) -> dict[str, float]:
@@ -535,7 +537,9 @@ def export_scan(
 
     resolved = resolve_context(scan.suffix, options.contrast_map)
     reference, unavailable = references.get(resolved.context_suffix or scan.suffix) if resolved.support == "supported" else (None, None)
-    stats = scan_statistics(i, project.inputs, resolved, options.stats_config, reference, _catalog(resolved, datatype), unavailable)
+    stats = scan_statistics(
+        i, project.inputs, resolved, options.stats_config, reference, _catalog(resolved, datatype), unavailable, project.outlier_cache
+    )
     if stats.skipped:
         notes.append(f"IQMs without a finite value: {', '.join(stats.skipped)}")
 

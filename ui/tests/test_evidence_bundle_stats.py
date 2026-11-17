@@ -30,6 +30,7 @@ from evidence_bundle.stats import (
     robust_z,
     scan_statistics,
     select_stratum,
+    stratum_outlier_scores,
 )
 from utils import reference_data
 from utils.reference_data import filter_reference_frame, filter_reference_iqm
@@ -551,3 +552,25 @@ class TestReferenceTable:
         first = [scan_statistics(i, scans, resolve_context("T1w"), CONFIG, reference=table) for i in range(3)]
         assert len(calls) == 1
         assert first[0].reference == scan_statistics(0, scans, resolve_context("T1w"), CONFIG, reference=_reference()).reference
+
+
+class TestStratumScores:
+    def test_each_stratum_scored_once(self, monkeypatch):
+        scans = _project(15, seed=3)
+        resolved = resolve_context("T1w")
+        uncached = [scan_statistics(i, scans, resolved, CONFIG).outlier for i in range(15)]
+        calls = []
+        real = stats_module._distance
+        monkeypatch.setattr(stats_module, "_distance", lambda *a: calls.append(1) or real(*a))
+        cache: dict = {}
+        cached = [scan_statistics(i, scans, resolved, CONFIG, outlier_cache=cache).outlier for i in range(15)]
+        assert cached == uncached
+        assert len(calls) == 15 and len(cache) == 1
+
+    def test_percentiles_of_one_stratum_are_ranks(self):
+        scores = stratum_outlier_scores(np.random.default_rng(2).normal(size=(10, 3)), ["a", "b", "c"])
+        percentiles = sorted(s.percentile for s in scores if s is not None)
+        assert percentiles == [100.0 * k / 9 for k in range(10)]
+
+    def test_too_small_stratum_has_no_scores(self):
+        assert stratum_outlier_scores(np.random.default_rng(2).normal(size=(3, 2)), ["a", "b"]) == [None] * 3
