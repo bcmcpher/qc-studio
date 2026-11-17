@@ -23,7 +23,7 @@ from evidence_bundle.view_rules import (
 
 IQMS_DIR = Path(__file__).resolve().parents[1] / "evidence_bundle" / "iqms"
 
-RULE_EXAMPLES = {"motion": ["fd_mean", "fd_num", "fd_perc"], "noise": ["snr_total", "efc", "fber", "qi_1", "gsr_x"]}
+RULE_EXAMPLES = {"motion": ["fd_mean", "fd_num", "fd_perc"], "noise": ["snr", "snr_total", "efc", "fber", "qi_1", "gsr_x"]}
 """One or more metric names per rule; each must fire that rule and no other."""
 
 
@@ -45,8 +45,9 @@ def _catalog_names() -> set[str]:
     for path in IQMS_DIR.glob("*.json"):
         data = json.loads(path.read_text())
         names.update(data.get("metrics", {}))
-        for entry in data.get("metric_patterns", {}).values():
-            names.update(entry.get("matches", []))
+        for key, entry in data.get("metric_patterns", {}).items():
+            # lookup_metric matches a pattern's key as well as its matches list.
+            names.update([key, *entry.get("matches", [])])
     return names
 
 

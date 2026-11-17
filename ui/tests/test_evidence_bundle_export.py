@@ -62,7 +62,7 @@ def dataset(tmp_path, monkeypatch):
     reference = pd.DataFrame({name: rng.normal(group[name].mean(), group[name].std() + 1e-6, 200) for name in ("cjv", "cnr", "efc", "snr_wm")})
     reference["Manufacturer"] = "GE"
     reference["MagneticFieldStrength"] = 3
-    reference.to_parquet(cache / "T1w.parquet")
+    reference.to_parquet(cache / "t1w.parquet")  # lower case, as the QC Metrics panel requests
     monkeypatch.setattr(reference_data, "REFERENCE_CACHE_DIR", cache)
     monkeypatch.delenv("REFERENCE_DATA_URL", raising=False)
     return ds
@@ -74,7 +74,15 @@ def _participants(tmp_path: Path, *pids: str) -> Path:
     return path
 
 
-def _run(ds: Path, tmp_path: Path, *extra: str, pids=("sub-CMH0001", "sub-CMH0002", "sub-CMH0003"), qc_json=QC_JSON, qc_task="anat_wf_qc"):
+def _run(
+    ds: Path,
+    tmp_path: Path,
+    *extra: str,
+    pids=("sub-CMH0001", "sub-CMH0002", "sub-CMH0003"),
+    qc_json=QC_JSON,
+    qc_task="anat_wf_qc",
+    sessions="ses-01,ses-02",
+):
     out = tmp_path / "out"
     code = main(
         [
@@ -82,8 +90,7 @@ def _run(ds: Path, tmp_path: Path, *extra: str, pids=("sub-CMH0001", "sub-CMH000
             str(ds),
             "--participant_list",
             str(_participants(tmp_path, *pids)),
-            "--session_list",
-            "ses-01,ses-02",
+            *(["--session_list", sessions] if sessions else []),
             "--qc_json",
             str(qc_json),
             "--qc_task",
@@ -122,6 +129,14 @@ class TestNames:
         mask = template_counterpart(anat / "sub-ED01_ses-01_run-1_desc-brain_mask.nii.gz", like=image)
         assert mask is not None and mask.name == "sub-ED01_ses-01_run-1_space-MNI152NLin2009cAsym_res-2_desc-brain_mask.nii.gz"
         assert template_counterpart(anat / "sub-ED01_ses-01_run-1_desc-ribbon_mask.nii.gz") is None
+
+    def test_counterpart_needs_the_same_desc(self, tmp_path):
+        for name in ("sub-01_dseg", "sub-01_space-MNI152NLin2009cAsym_desc-aparcaseg_dseg"):
+            (tmp_path / f"{name}.nii.gz").touch()
+        assert template_counterpart(tmp_path / "sub-01_dseg.nii.gz") is None
+        (tmp_path / "sub-01_space-MNI152NLin2009cAsym_res-2_dseg.nii.gz").touch()
+        found = template_counterpart(tmp_path / "sub-01_dseg.nii.gz")
+        assert found is not None and found.name == "sub-01_space-MNI152NLin2009cAsym_res-2_dseg.nii.gz"
 
 
 class TestExportSampleData:
@@ -189,6 +204,32 @@ class TestFailures:
         assert not (out / row["bundle_dir"] / "views").exists()
         assert (summary["status"] == "ok").sum() == 5
 
+    def test_overlay_on_another_grid_keeps_core_views(self, dataset, tmp_path):
+        qc_json = _qc_json(
+            tmp_path,
+            {
+                "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/[[NIPOPPY_BIDS_SESSION_ID]]/anat/"
+                "[[NIPOPPY_BIDS_PARTICIPANT_ID]]_[[NIPOPPY_BIDS_SESSION_ID]]_run-1_T1w.nii.gz",
+                "overlay_mri_image_path": f"{ED01_ANAT}/sub-ED01_ses-01_run-1_desc-brain_mask.nii.gz",
+                "iqm_path": ["derivatives/mriqc/group_T1w.tsv"],
+            },
+        )
+        _, out, summary = _run(dataset, tmp_path, pids=("sub-CMH0001",), qc_json=qc_json, qc_task="task", sessions="ses-01")
+        row = summary.iloc[0]
+        assert (row["status"], row["n_views"]) == ("ok", "3") and "no mask overlay views" in row["notes"]
+        views = sorted(p.name for p in (out / row["bundle_dir"] / "views").iterdir())
+        assert views == ["core_axial.png", "core_coronal.png", "core_sagittal.png"]
+
+    def test_error_removes_a_stale_bundle(self, dataset, tmp_path):
+        _, out, _ = _run(dataset, tmp_path, pids=("sub-CMH0001",), sessions="ses-01")
+        assert (out / "sub-CMH0001/ses-01/fmriprep/anat_wf_qc/bundle.json").is_file()
+        tsv = dataset / "derivatives/mriqc/group_T1w.tsv"
+        group = pd.read_csv(tsv, sep="\t")
+        group[group["bids_name"] != "sub-CMH0001_ses-01_run-1_T1w"].to_csv(tsv, sep="\t", index=False)
+        code, out, summary = _run(dataset, tmp_path, pids=("sub-CMH0001",), sessions="ses-01")
+        assert code == 1 and summary["status"].iloc[0] == "error"
+        assert not (out / "sub-CMH0001/ses-01/fmriprep/anat_wf_qc").exists()
+
     def test_scan_without_iqms_gets_no_bundle(self, dataset, tmp_path):
         code, out, summary = _run(dataset, tmp_path, pids=("sub-CMH0001", "sub-NOPE"))
         assert code == 0
@@ -208,6 +249,34 @@ class TestFailures:
     def test_unknown_task_is_a_usage_error(self, dataset, tmp_path):
         assert main(["--dataset_dir", str(dataset), "--participant_list", str(_participants(tmp_path, "sub-CMH0001")),
                      "--qc_json", str(QC_JSON), "--qc_task", "nope", "--qc_pipeline", "fmriprep", "--out_dir", str(tmp_path / "out")]) == 2  # fmt: skip
+
+
+class TestSingleSession:
+    def test_raw_files_without_a_session_folder(self, dataset, tmp_path):
+        tsv = dataset / "derivatives/mriqc/group_T1w.tsv"
+        group = pd.read_csv(tsv, sep="\t")
+        pd.concat([group, group.iloc[[0]].assign(bids_name="sub-SOLO_run-1_T1w")]).to_csv(tsv, sep="\t", index=False)
+        anat = dataset / "bids/sub-SOLO/anat"
+        anat.mkdir(parents=True)
+        nib.save(nib.Nifti1Image(_head(9), np.eye(4)), str(anat / "sub-SOLO_run-1_T1w.nii.gz"))
+        (anat / "sub-SOLO_run-1_T1w.json").write_text(json.dumps({"FlipAngle": 11, "InstitutionName": "Hidden"}))
+        qc_json = _qc_json(
+            tmp_path,
+            {
+                "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_run-1_T1w.nii.gz",
+                "iqm_path": ["derivatives/mriqc/group_T1w.tsv"],
+            },
+        )
+        _, out, summary = _run(dataset, tmp_path, pids=("sub-SOLO",), qc_json=qc_json, qc_task="task", sessions=None)
+        assert summary["status"].iloc[0] == "ok", summary["error"].iloc[0]
+        bundle = _bundle(out, "sub-SOLO", "ses-01", task="task")
+        assert bundle.acquisition.sequence.FlipAngle == 11 and bundle.acquisition.geometry.shape == SHAPE
+        assert "Hidden" not in (out / summary["bundle_dir"].iloc[0] / "bundle.json").read_text()
+
+    def test_missing_raw_files_are_noted(self, dataset, tmp_path):
+        shutil.rmtree(dataset / "bids/sub-CMH0001/ses-01")
+        _, _, summary = _run(dataset, tmp_path, pids=("sub-CMH0001",), sessions="ses-01")
+        assert "no raw BIDS files" in summary["notes"].iloc[0]
 
 
 class TestRaterQC:

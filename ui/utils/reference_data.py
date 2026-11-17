@@ -118,8 +118,11 @@ def normalize_field_strength(value: object) -> Optional[str]:
     return f"{numeric_value:g}"
 
 
-def _load_reference_parquet(modality: str):
-    """Ensure the modality's Parquet file is downloaded, then read it."""
+def load_reference_parquet(modality: str):
+    """Ensure the modality's Parquet file is downloaded, then read it.
+
+    ``modality`` is lower case (``t1w``, ``bold``, ``dwi``), as the file names on the host are.
+    """
     local_parquet_path = REFERENCE_CACHE_DIR / f"{modality}.parquet"
     if not local_parquet_path.exists():
         download_reference_parquet(modality=modality)
@@ -178,5 +181,5 @@ def filter_reference_iqm(
     Expects pre-normalized manufacturer/field-strength so equivalent raw
     spellings (e.g. "GE", "General Electric") share one cache entry upstream.
     """
-    data = _load_reference_parquet(modality)
+    data = load_reference_parquet(modality)
     return filter_reference_frame(data, manufacturer_norm, field_strength_norm, max_rows, voxel_size)

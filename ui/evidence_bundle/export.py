@@ -16,6 +16,7 @@ bundle was written.
 import argparse
 import json
 import numbers
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -47,8 +48,8 @@ from evidence_bundle.models import (  # noqa: E402
     ViewRef,
 )
 from evidence_bundle.render import prepare_scene, render_core_views  # noqa: E402
-from evidence_bundle.stats import ScanInput, scan_statistics  # noqa: E402
-from evidence_bundle.view_rules import fired_rules, render_targeted_views  # noqa: E402
+from evidence_bundle.stats import ReferenceTable, ScanInput, scan_statistics  # noqa: E402
+from evidence_bundle.view_rules import fired_rules, render_overlay_views, render_targeted_views  # noqa: E402
 from utils import reference_data  # noqa: E402
 from utils.cohort import build_qc_cohort, normalize_participant_id_bids, normalize_session_id_bids, parse_session_list  # noqa: E402
 from utils.config import build_substitution_values, list_qc_tasks_from_json, parse_qc_config  # noqa: E402
@@ -99,16 +100,16 @@ def bids_suffix(bids_name: str) -> str:
 
 
 def _template_candidates(path: Path) -> list[Path]:
-    """Template-space files of the same scan and kind as ``path``, in the same directory."""
+    """Template-space files of the same scan and kind as ``path``, in the same directory.
+
+    A candidate has the same entities as ``path`` plus ``space-<TEMPLATE_SPACE>`` and at most a
+    ``res-`` entity, so ``sub-01_dseg`` does not match ``sub-01_space-..._desc-aparcaseg_dseg``.
+    """
     parts = _strip_extension(path.name).split("_")
     head = [p for p in parts if _entity(p) not in ("space", "res", "desc") and p != parts[-1]]
     tail = [p for p in parts if _entity(p) == "desc"] + [parts[-1]]
-    pattern = "_".join([*head, f"space-{TEMPLATE_SPACE}"]) + "_*" + "_".join(tail) + ".nii*"
-    exact = "_".join([*head, f"space-{TEMPLATE_SPACE}", *tail])
-    matches = [p for p in path.parent.glob(pattern) if p.is_file()]
-    # "_*" needs at least the underscore, so the name without a res- entity is checked apart.
-    matches += [path.parent / f"{exact}{ext}" for ext in NIFTI_EXTENSIONS if (path.parent / f"{exact}{ext}").is_file()]
-    return sorted(set(matches))
+    name = re.compile(re.escape("_".join([*head, f"space-{TEMPLATE_SPACE}"])) + r"(_res-[^_]+)?_" + re.escape("_".join(tail)) + r"\.nii(\.gz)?")
+    return sorted(p for p in path.parent.iterdir() if p.is_file() and name.fullmatch(p.name))
 
 
 def _res(path: Path) -> Optional[str]:
@@ -210,19 +211,24 @@ def load_project(tsv_paths: Sequence[Path]) -> Project:
 
 
 class ReferenceTables:
-    """MRIQC reference tables, loaded once per suffix."""
+    """MRIQC reference tables, loaded once per suffix through ``reference_data``."""
 
     def __init__(self):
-        self._tables: dict[str, tuple[Optional[pd.DataFrame], Optional[str]]] = {}
+        self._tables: dict[str, tuple[Optional[ReferenceTable], Optional[str]]] = {}
 
-    def get(self, suffix: str) -> tuple[Optional[pd.DataFrame], Optional[str]]:
-        """The table for a suffix, or None with the reason it is unavailable."""
-        if suffix not in self._tables:
+    def get(self, suffix: str) -> tuple[Optional[ReferenceTable], Optional[str]]:
+        """The table for a suffix, or None with the reason it is unavailable.
+
+        The host and the cache name files by the lower-case suffix (``t1w.parquet``), as the
+        QC Metrics panel does.
+        """
+        modality = suffix.lower()
+        if modality not in self._tables:
             try:
-                self._tables[suffix] = (pd.read_parquet(reference_data.download_reference_parquet(suffix)), None)
+                self._tables[modality] = (ReferenceTable(reference_data.load_reference_parquet(modality)), None)
             except Exception as exc:  # no URL, no network, no table for the suffix
-                self._tables[suffix] = (None, f"no {suffix} reference data: {exc}")
-        return self._tables[suffix]
+                self._tables[modality] = (None, f"no {modality} reference data: {exc}")
+        return self._tables[modality]
 
 
 # --- rater QC ------------------------------------------------------------------------------
@@ -264,25 +270,54 @@ def render_views(bundle_dir: Path, image: Path, overlay: Optional[Path], metrics
     A native image with a template-space counterpart is drawn in template space, with the
     template-space overlay and a native background scene. A template-space image is drawn as
     is; its overlay must be template-space too.
+
+    The core views must succeed (their error propagates). Flag-rule views and mask overlay
+    views are separate steps: a failure there is added to ``notes`` and the other views stay.
     """
+    background_overlay = None
     if is_template_space(image):
         scene = prepare_scene(image, template_image_path=image)
-        overlay_path, background = overlay, None
+        overlay_path = overlay
     elif (template := template_counterpart(image)) is not None:
         scene = prepare_scene(image, template_image_path=template)
-        overlay_path = None
+        overlay_path, background_overlay = None, overlay
         if overlay is not None:
             overlay_path = overlay if is_template_space(overlay) else template_counterpart(overlay, like=template)
             if overlay_path is None:
                 notes.append(f"no {TEMPLATE_SPACE} counterpart of {overlay.name}; no mask overlay views")
-        needs_background = any(rule.needs_background for rule, _ in fired_rules(metrics))
-        background = prepare_scene(image, mask_path=overlay) if needs_background else None
     else:
-        scene = prepare_scene(image, mask_path=overlay)
-        overlay_path, background = overlay, None
+        try:
+            scene = prepare_scene(image, mask_path=overlay)
+        except ValueError as exc:  # the overlay is not on the image grid
+            notes.append(f"slices placed by a threshold head mask: {exc}")
+            scene = prepare_scene(image)
+        overlay_path = overlay
     views = render_core_views(scene, bundle_dir)
-    views += render_targeted_views(scene, bundle_dir, metrics, overlay_path=overlay_path, background_scene=background)
+
+    background = None
+    if scene.placement == "mni" and not is_template_space(image) and any(rule.needs_background for rule, _ in fired_rules(metrics)):
+        try:
+            background = prepare_scene(image, mask_path=background_overlay)
+        except Exception as exc:
+            notes.append(f"no native background scene, background views drawn from the template image: {exc}")
+    try:
+        views += render_targeted_views(scene, bundle_dir, metrics, background_scene=background)
+    except Exception as exc:
+        notes.append(f"no flag-rule views: {exc}")
+    if overlay_path is not None:
+        try:
+            views += render_overlay_views(scene, bundle_dir, overlay_path)
+        except Exception as exc:
+            notes.append(f"no mask overlay views: {exc}")
     return views
+
+
+def _remove_unreferenced_views(bundle_dir: Path, views: Sequence[ViewRef]) -> None:
+    """Delete PNGs a failed step wrote but the bundle does not reference."""
+    keep = {bundle_dir / v.path for v in views}
+    for path in (bundle_dir / "views").glob("*.png"):
+        if path not in keep:
+            path.unlink()
 
 
 # --- PACKAGE.md ----------------------------------------------------------------------------
@@ -434,13 +469,19 @@ def _resolve_image(dataset_dir: Path, spec: Path) -> Path:
 
 
 def _raw_scan_files(dataset_dir: Path, pid: str, sid: str, datatype: Optional[str], bids_name: str) -> tuple[Optional[Path], Optional[Path]]:
-    """The raw BIDS image and sidecar of a scan, when they exist."""
+    """The raw BIDS image and sidecar of a scan, when they exist.
+
+    Looks in ``bids/<sub>/<ses>/<datatype>`` and, for datasets without a session level,
+    ``bids/<sub>/<datatype>``.
+    """
     if datatype is None:
         return None, None
-    folder = dataset_dir / "bids" / pid / sid / datatype
-    image = next((folder / f"{bids_name}{ext}" for ext in NIFTI_EXTENSIONS if (folder / f"{bids_name}{ext}").is_file()), None)
-    sidecar = folder / f"{bids_name}.json"
-    return image, sidecar if sidecar.is_file() else None
+    for folder in (dataset_dir / "bids" / pid / sid / datatype, dataset_dir / "bids" / pid / datatype):
+        image = next((folder / f"{bids_name}{ext}" for ext in NIFTI_EXTENSIONS if (folder / f"{bids_name}{ext}").is_file()), None)
+        sidecar = folder / f"{bids_name}.json"
+        if image is not None or sidecar.is_file():
+            return image, sidecar if sidecar.is_file() else None
+    return None, None
 
 
 def _catalog(resolved: ResolvedContext, datatype: Optional[str]) -> Optional[MetricContextFile]:
@@ -500,6 +541,8 @@ def export_scan(
 
     raw_image, sidecar_path = _raw_scan_files(options.dataset_dir, pid, sid, datatype, bids_name)
     sidecar = json.loads(sidecar_path.read_text()) if sidecar_path is not None else None
+    if raw_image is None and sidecar_path is None:
+        notes.append(f"no raw BIDS files for {bids_name}; acquisition from MRIQC bids_meta and geometry from MRIQC")
     geometry_source = None
     if raw_image is not None:
         try:
@@ -527,7 +570,8 @@ def export_scan(
         views = render_views(bundle_dir, image, overlay, stats.metrics, notes)
     except Exception as exc:
         error = f"no views: {exc}"
-        shutil.rmtree(bundle_dir / "views", ignore_errors=True)
+        views = []
+    _remove_unreferenced_views(bundle_dir, views)
 
     bundle = EvidenceBundle(
         participant_id=pid,
@@ -581,11 +625,14 @@ def export_bundles(cohort: Sequence[Mapping[str, Any]], options: ExportOptions) 
         pid = entry["participant_id"]
         sid = _session(entry.get("session_id"))
         try:
-            rows.append(export_scan(pid, sid, options, projects, references))
+            row = export_scan(pid, sid, options, projects, references)
         except Exception as exc:
             row = _summary_row(pid, sid, options)
             row["error"] = f"{type(exc).__name__}: {exc}"
-            rows.append(row)
+        if row["status"] == "error":
+            # A bundle from an earlier run would read as current evidence.
+            shutil.rmtree(options.out_dir / pid / sid / options.pipeline / options.qc_task, ignore_errors=True)
+        rows.append(row)
     summary = pd.DataFrame(rows, columns=list(_summary_row("", "", options)))
     summary.to_csv(options.out_dir / "acquisition_summary.tsv", sep="\t", index=False)
     return summary

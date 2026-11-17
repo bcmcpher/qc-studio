@@ -787,7 +787,7 @@ class TestDownloadReferenceParquet:
 
 class TestFilterReferenceIqm:
     """Test filter_reference_iqm's manufacturer/field-strength filtering and
-    row-sampling, with _load_reference_parquet mocked out (no real Parquet
+    row-sampling, with load_reference_parquet mocked out (no real Parquet
     download/IO). Takes already-normalized values directly - the
     normalize-then-cache orchestration lives in
     iqm_viewer.load_reference_iqm_for_subject, tested separately."""
@@ -800,7 +800,7 @@ class TestFilterReferenceIqm:
                 "efc": [0.1, 0.2, 0.3],
             }
         )
-        with patch("utils.reference_data._load_reference_parquet", return_value=reference_df):
+        with patch("utils.reference_data.load_reference_parquet", return_value=reference_df):
             result = filter_reference_iqm(
                 modality="t1w",
                 manufacturer_norm="siemens",
@@ -818,7 +818,7 @@ class TestFilterReferenceIqm:
                 "efc": [0.1, 0.2],
             }
         )
-        with patch("utils.reference_data._load_reference_parquet", return_value=reference_df):
+        with patch("utils.reference_data.load_reference_parquet", return_value=reference_df):
             result = filter_reference_iqm(
                 modality="t1w",
                 manufacturer_norm="unknown",
@@ -835,7 +835,7 @@ class TestFilterReferenceIqm:
                 "efc": range(100),
             }
         )
-        with patch("utils.reference_data._load_reference_parquet", return_value=reference_df):
+        with patch("utils.reference_data.load_reference_parquet", return_value=reference_df):
             result = filter_reference_iqm(
                 modality="t1w",
                 manufacturer_norm="siemens",

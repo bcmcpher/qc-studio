@@ -7,7 +7,7 @@ is no scikit-learn.
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional, Sequence, get_args
+from typing import Any, Mapping, Optional, Sequence, Union, get_args
 
 import numpy as np
 import pandas as pd
@@ -97,6 +97,34 @@ def empirical_percentile(value: float, sample: np.ndarray) -> float:
     return 100.0 * (below + 0.5 * ties) / sample.size
 
 
+class ReferenceTable:
+    """A loaded MRIQC reference table that caches its filtered subsets.
+
+    Scans with the same field strength, manufacturer and voxel size share one subset, so a
+    project filters the table once per distinct key instead of once per scan.
+    """
+
+    def __init__(self, frame: pd.DataFrame):
+        self.frame = frame
+        self._subsets: dict[tuple, pd.DataFrame] = {}
+
+    @property
+    def columns(self) -> pd.Index:
+        return self.frame.columns
+
+    def subset(self, manufacturer: str, field_strength: Optional[str], voxel: Optional[tuple[float, float, float]]) -> pd.DataFrame:
+        key = (manufacturer, field_strength, voxel)
+        if key not in self._subsets:
+            self._subsets[key] = filter_reference_frame(
+                self.frame, manufacturer, field_strength, MAX_REFERENCE_ROWS, voxel, SIGNATURE_ROUNDING["VoxelSize"]
+            )
+        return self._subsets[key]
+
+
+Reference = Union[pd.DataFrame, ReferenceTable]
+"""A reference table; pass a ``ReferenceTable`` to reuse filtered subsets across scans."""
+
+
 # --- strata ------------------------------------------------------------------------------
 
 
@@ -135,7 +163,7 @@ def select_stratum(index: int, scans: Sequence[ScanInput], config: StatsConfig) 
 def reference_subset(
     resolved: ResolvedContext,
     signature: ProtocolSignature,
-    reference: Optional[pd.DataFrame],
+    reference: Optional[Reference],
     config: StatsConfig,
     unavailable_reason: Optional[str] = None,
 ) -> tuple[Optional[pd.DataFrame], DistributionContext]:
@@ -150,6 +178,7 @@ def reference_subset(
         return None, DistributionContext(n=0, note=note)
     if reference is None:
         return None, DistributionContext(n=0, note=unavailable_reason or f"no reference data for {signature.suffix}")
+    table = reference if isinstance(reference, ReferenceTable) else ReferenceTable(reference)
 
     field_strength = normalize_field_strength(signature.MagneticFieldStrength)
     fields = list(REFERENCE_SIGNATURE_FIELDS)
@@ -162,7 +191,7 @@ def reference_subset(
         if manufacturer != "unknown" and "Manufacturer" in reference.columns:
             applied["Manufacturer"] = manufacturer
         voxel = signature.VoxelSize if "VoxelSize" in fields else None
-        data = filter_reference_frame(reference, manufacturer, field_strength, MAX_REFERENCE_ROWS, voxel, SIGNATURE_ROUNDING["VoxelSize"])
+        data = table.subset(manufacturer, field_strength, voxel)
         if voxel is not None and all(c in reference.columns for c in VOXEL_SIZE_COLUMNS):
             applied["VoxelSize"] = "x".join(f"{v:g}" for v in voxel)
         if len(data) >= config.min_stratum_size or not drops:
@@ -289,7 +318,7 @@ def scan_statistics(
     scans: Sequence[ScanInput],
     resolved: ResolvedContext,
     config: StatsConfig,
-    reference: Optional[pd.DataFrame] = None,
+    reference: Optional[Reference] = None,
     catalog: Optional[MetricContextFile] = None,
     reference_unavailable: Optional[str] = None,
 ) -> ScanStatistics:

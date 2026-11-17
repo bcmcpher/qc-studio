@@ -49,8 +49,9 @@ FLAG_RULES: tuple[ViewRule, ...] = (
     ),
     ViewRule(
         name="noise",
-        # Noise and ghosting show in the background, so the window saturates the head.
-        metrics=("snr_*", "efc", "fber", "qi_1", "gsr_*"),
+        # Noise and ghosting show in the background, so the window saturates the head. Anatomical
+        # contexts name SNR per tissue (snr_*); bold and dwi name it plain snr.
+        metrics=("snr", "snr_*", "efc", "fber", "qi_1", "gsr_*"),
         plane="axial",
         mni_coords=CORE_MNI_COORDS["axial"],
         bbox_fractions=CORE_BBOX_FRACTIONS,
@@ -123,20 +124,29 @@ def render_targeted_views(
             )
         )
     if overlay_path is not None:
-        overlay = load_overlay(overlay_path, scene)
-        views.extend(
-            render_view(
-                scene,
-                bundle_dir,
-                name=f"targeted_{MASK_OVERLAY_RULE}_{plane}",
-                kind="targeted",
-                plane=plane,  # type: ignore[arg-type]
-                mni_coords=CORE_MNI_COORDS[plane],
-                bbox_fractions=CORE_BBOX_FRACTIONS,
-                window_percentiles=CORE_WINDOW_PERCENTILES,
-                rule=MASK_OVERLAY_RULE,
-                overlay=overlay,
-            )
-            for plane in CORE_PLANES
-        )
+        views.extend(render_overlay_views(scene, bundle_dir, overlay_path))
     return views
+
+
+def render_overlay_views(scene: Scene, bundle_dir: Path, overlay_path: Path) -> list[ViewRef]:
+    """Render the mask overlay views, one per core plane.
+
+    The overlay is loaded before any view is written, so a grid mismatch (``ValueError``) leaves
+    no partial files.
+    """
+    overlay = load_overlay(overlay_path, scene)
+    return [
+        render_view(
+            scene,
+            bundle_dir,
+            name=f"targeted_{MASK_OVERLAY_RULE}_{plane}",
+            kind="targeted",
+            plane=plane,  # type: ignore[arg-type]
+            mni_coords=CORE_MNI_COORDS[plane],
+            bbox_fractions=CORE_BBOX_FRACTIONS,
+            window_percentiles=CORE_WINDOW_PERCENTILES,
+            rule=MASK_OVERLAY_RULE,
+            overlay=overlay,
+        )
+        for plane in CORE_PLANES
+    ]

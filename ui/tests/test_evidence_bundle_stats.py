@@ -18,12 +18,14 @@ from evidence_bundle.models import (
     StatsConfig,
     context_category_for,
 )
+from evidence_bundle import stats as stats_module
 from evidence_bundle.stats import (
     ScanInput,
     empirical_percentile,
     metric_flags,
     numeric_iqms,
     outlier_score,
+    ReferenceTable,
     reference_subset,
     robust_z,
     scan_statistics,
@@ -537,3 +539,15 @@ class TestReferenceFilter:
         _reference(n=20).to_parquet(tmp_path / "T1w.parquet")
         assert len(filter_reference_iqm("T1w", "siemens", "3", 1000, voxel_size=(1.0, 1.0, 1.0))) == 20
         assert len(filter_reference_iqm("T1w", "ge", "3", 1000)) == 0
+
+
+class TestReferenceTable:
+    def test_scans_with_one_key_share_one_filter_pass(self, monkeypatch):
+        calls = []
+        real = stats_module.filter_reference_frame
+        monkeypatch.setattr(stats_module, "filter_reference_frame", lambda *a, **k: calls.append(a[1:]) or real(*a, **k))
+        scans = _project(12)
+        table = ReferenceTable(_reference())
+        first = [scan_statistics(i, scans, resolve_context("T1w"), CONFIG, reference=table) for i in range(3)]
+        assert len(calls) == 1
+        assert first[0].reference == scan_statistics(0, scans, resolve_context("T1w"), CONFIG, reference=_reference()).reference
