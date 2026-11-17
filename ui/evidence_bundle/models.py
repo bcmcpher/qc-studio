@@ -362,6 +362,8 @@ class EvidenceBundle(_Strict):
     session_id: str
     pipeline: str
     qc_task: str
+    bids_name: str
+    """BIDS name of the scan the IQMs describe, as in the MRIQC group TSV (``sub-01_ses-01_run-1_T1w``)."""
     suffix: str
     """BIDS suffix of the scan (``T1w``, ``T2w``, ``FLAIR``, ``bold``, ...)."""
     support: SupportTier

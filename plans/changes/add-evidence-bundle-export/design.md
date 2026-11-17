@@ -141,7 +141,17 @@ Metadata sources found in `sample_data/`:
   on `snr_*`, `efc`, `fber`, `qi_1` or `gsr_*` add axial slices with a window of the 0.5th to 50th percentile, which saturates the head and
   shows the background. Mask overlay views (one per core plane) are added whenever an overlay
   is set, so they are never controls.
-- **`PACKAGE.md` via `str.format`.** Ported as is from `render_markdown_template`.
+- **`PACKAGE.md` via `str.format`.** Ported as is from `render_markdown_template`. It holds the
+  evidence only; the model prompt belongs to `add-model-feedback`.
+- **One bundle per QC task; the base image names the scan (user, 2026-11-17).** The export
+  strips `space-`, `res-` and `desc-` from the `base_mri_image_path` file name to get the MRIQC
+  BIDS name, records it as `bids_name`, and looks it up in the `iqm_path` group TSVs. A glob
+  matching more than one file is an error.
+- **Partial bundles (user, 2026-11-17).** A scan whose image is missing or unreadable still
+  gets a bundle, without views (status `partial`). A scan without IQMs gets none (`error`).
+- **One geometry source per stratum.** Every signature uses MRIQC `bids_meta` and
+  `size_*`/`spacing_*`, so a scan and its stratum are described alike. The bundle's own
+  `geometry` comes from the raw BIDS NIfTI header when the file exists.
 
 ## Risks / Trade-offs
 

@@ -15,3 +15,7 @@ These terms are used throughout the documentation.
 | **Facet** | A named aspect of the image (such as motion) or a brain region, rated separately in a multi-facet task. |
 | **Checkpoint** | A timestamped snapshot of the current QC records, which can be loaded later to resume. |
 | **Autoplay** | Timed auto-advance from one QC page to the next. See [Autoplay](../guides/autoplay.md). |
+| **Evidence bundle** | The exported QC evidence for one scan: `bundle.json`, `PACKAGE.md` and 2D views. See [Evidence bundle export](../guides/evidence_bundle.md). |
+| **Protocol signature** | The rounded acquisition fields that define which scans are comparable. |
+| **Acquisition deviation** | A protocol-signature field whose value differs from the most common value for that suffix. |
+| **Support tier** | How an evidence bundle interprets a scan's IQMs: `supported`, `fallback` or `unsupported`. |

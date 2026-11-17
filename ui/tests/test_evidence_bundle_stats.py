@@ -445,6 +445,7 @@ class TestScanStatistics:
             session_id="ses-01",
             pipeline="mriqc",
             qc_task="anat",
+            bids_name="sub-01_ses-01_T1w",
             suffix="T1w",
             support=resolved.support,
             context_suffix=resolved.context_suffix,

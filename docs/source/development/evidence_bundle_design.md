@@ -152,7 +152,7 @@ One directory per scan:
 `bundle.json` holds:
 
 - `schema_version`, and the QC-Studio and MRIQC versions;
-- participant, session, pipeline and QC task identifiers;
+- participant, session, pipeline and QC task identifiers, and the scan's BIDS name (`bids_name`);
 - selected acquisition metadata from the BIDS sidecar;
 - per metric: value, direction of concern, project and reference percentiles, flags and context
   category;

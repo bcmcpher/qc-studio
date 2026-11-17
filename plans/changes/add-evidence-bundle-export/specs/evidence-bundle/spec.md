@@ -249,7 +249,15 @@ The system SHALL provide a CLI that takes `--dataset_dir`, `--participant_list`,
 `--qc_task` and `--out_dir`, and writes
 `<out_dir>/<participant_id>/<session_id>/<pipeline>/<qc_task>/` containing `bundle.json`,
 `PACKAGE.md` and `views/`, plus `<out_dir>/acquisition_summary.tsv`. It SHALL merge the rater's
-QC when a `*_qc_status.tsv` is given.
+QC when a `*_qc_status.tsv` is given. The scan of a bundle SHALL be the image that
+`base_mri_image_path` names; its BIDS name, without the `space-`, `res-` and `desc-` entities,
+SHALL be recorded as `bids_name` and SHALL select the scan's IQMs in the `iqm_path` group TSVs.
+The CLI SHALL accept `--contrast_map` and a `--stats_config` JSON.
+
+#### Scenario: Scan without IQMs
+
+- **WHEN** the group TSVs have no row for a scan's `bids_name`
+- **THEN** no bundle is written for it and `acquisition_summary.tsv` records status `error`
 
 #### Scenario: Export sample data
 
@@ -265,5 +273,6 @@ QC when a `*_qc_status.tsv` is given.
 #### Scenario: One scan fails
 
 - **WHEN** one scan's image cannot be read
-- **THEN** `acquisition_summary.tsv` records the error for that scan
+- **THEN** `acquisition_summary.tsv` records the error for that scan, with status `partial`
+- **AND** that scan's bundle is written without views
 - **AND** bundles for the other scans are written and the CLI exits with status 0

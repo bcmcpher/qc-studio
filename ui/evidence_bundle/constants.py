@@ -101,3 +101,15 @@ LABEL_HEIGHT_PX = 20
 
 LABEL_FONT_SIZE = 12
 """Size of Pillow's built-in font for the labels."""
+
+TEMPLATE_SPACE = "MNI152NLin2009cAsym"
+"""Template space of the ``mni`` placement; its images are found by the ``space-`` entity."""
+
+DERIVED_ENTITIES: tuple[str, ...] = ("space", "res", "desc")
+"""BIDS entities a pipeline adds to a scan's name; removed to get the name MRIQC used."""
+
+BASE_CATALOG_SUFFIX: dict[str, str] = {"anat": "T1w", "func": "bold", "dwi": "dwi"}
+"""Per BIDS datatype, the suffix whose context names the metrics of an ``unsupported`` scan.
+
+``T1w`` loads ``anat.json`` without overrides, the base catalog of anatomical scans.
+"""

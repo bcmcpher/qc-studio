@@ -56,6 +56,7 @@ includehidden:
 guides/configuration
 guides/ratings
 guides/autoplay
+guides/evidence_bundle
 ```
 
 ```{toctree}
