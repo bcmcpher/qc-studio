@@ -202,7 +202,7 @@ It reports schema validity, consistency validity and agreement with the labels.
   code reuses `ui/utils/reference_data.py`, `ui/utils/cohort.py` and the `qc.json` path
   resolution. It runs without Streamlit, and CI tests it with the rest of `ui/tests`.
 - `sandbox/`: model adapters, prompt templates and the evaluation runner. These need optional
-  dependencies (`anthropic`, `torch`, `transformers`).
+  dependencies (`anthropic`, `openai`). Self-hosted models run behind an OpenAI-compatible server.
 
 ## Open questions
 

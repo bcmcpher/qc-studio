@@ -31,7 +31,7 @@ Sandbox state:
 ## Decisions
 
 - **Schema and validator in core, adapters in sandbox.** The UI needs to read and validate
-  `feedback.json` without optional dependencies. Adapters need `anthropic`/`torch`, so they
+  `feedback.json` without optional dependencies. Adapters need `anthropic`/`openai`, so they
   stay in `sandbox/model_adapters/` until evaluation picks what to keep.
 - **`QCFeedback` fields.** Keep the `QCDecision` fields and enums. Add optional
   `image_observations: list[str]` (empty for IQMs-only runs) so the image template has a home.
@@ -61,8 +61,21 @@ Sandbox state:
 - **Endpoint is an argument.** The Claude adapter accepts an optional `base_url` (CLI
   `--base_url`, env `ANTHROPIC_BASE_URL`) and passes it to the client, so a compatible proxy
   or institutional endpoint works without code changes. The URL is recorded in the
-  `FeedbackResult` metadata. Adapters for other API families (for example OpenAI-compatible
-  servers for local models) are a later change.
+  `FeedbackResult` metadata.
+- **Self-hosted models through an OpenAI-compatible API.** Most deployments are expected to
+  serve a model (for example LLaVA-OneVision under vLLM) behind an OpenAI-compatible HTTP
+  endpoint, remote or on a local GPU workstation. One adapter, `openai_compat.py`, covers
+  both: `chat.completions` with views as base64 PNG data URLs, `response_format` with the
+  `QCFeedback` JSON schema, `temperature=0`. `base_url` (`--base_url`, `OPENAI_BASE_URL`)
+  and the model id are required, since there is no meaningful default; the API key
+  (`OPENAI_API_KEY`) is optional. A server that ignores `response_format` still works,
+  because `parse_reply` extracts JSON from free text. Decided 2026-11-17.
+- **No in-process local adapter.** The HTTP adapter replaces the planned `llava.py` port of
+  `chat_image.py`. A workstation runs the same server locally, so the core and sandbox need
+  no `torch` or `transformers`. Decided 2026-11-17.
+- **Data-use acknowledgement for every endpoint.** Both adapters refuse to send images
+  without the flag, local host or not. Each deployment states its choice; the code does not
+  guess which hosts are internal. Decided 2026-11-17.
 
 ## Risks / Trade-offs
 
@@ -70,8 +83,11 @@ Sandbox state:
   refuses to run unless an explicit flag acknowledges this; docs state it.
 - [Tool-use output differs from free-text behaviour seen in the sandbox] → evaluation compares
   both on the same bundles before a default is chosen.
-- [No local NVIDIA GPU on the dev machine] → LLaVA adapter tested with a stubbed model;
-  real runs on lab or HPC hardware.
+- [No local NVIDIA GPU on the dev machine] → the HTTP adapter is tested with a mocked
+  client; real runs against a remote server or a GPU workstation running one.
+- [Servers differ in their support for `response_format` and image input] → the adapter
+  records the request settings; a live check against the chosen server is part of the
+  evaluation, not CI.
 - [Prompt drift between adapters] → every adapter renders one shared template around the
   bundle's `PACKAGE.md`; the prompt hash is stored.
 
@@ -81,4 +97,7 @@ Sandbox state:
   until `add-feedback-evaluation` reports.
 - Default Claude model: `claude-sonnet-5-5` (the sandbox used `claude-sonnet-4-6`); `--model`
   overrides it. Decided 2026-11-17.
-- Which LLaVA-OneVision size is the reference local model (4B now, 8B needs more compute)?
+- Which LLaVA-OneVision size is the reference self-hosted model (4B now, 8B needs more
+  compute)? A server setting, not code; the evaluation decides.
+- Which host runs the first live check (remote server or GPU workstation)? Decided when the
+  evaluation needs it.

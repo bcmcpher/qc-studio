@@ -36,12 +36,13 @@ As built (section 1):
 - [ ] 3.5 Accept an optional `base_url` (`--base_url`, `ANTHROPIC_BASE_URL`); pass it to the client; record it in the metadata
 - [ ] 3.6 Tests with a mocked client: images attached in the image variant, absent in the IQMs-only variant, refusal without the flag, `base_url` passed through
 
-## 4. LLaVA-OneVision adapter — `sandbox/model_adapters/llava.py`
+## 4. OpenAI-compatible adapter — `sandbox/model_adapters/openai_compat.py`
 
-- [ ] 4.1 Port model loading, device and dtype selection from the 4B `chat_image.py`; lazy `torch`/`transformers` import
-- [ ] 4.2 Send the bundle's core and targeted views instead of re-rendering middle slices
-- [ ] 4.3 Replace `validate_result` with the core validator
-- [ ] 4.4 Tests with a stubbed model and processor
+- [ ] 4.1 Lazy `openai` import; required `base_url` (`--base_url`, `OPENAI_BASE_URL`) and model id; optional `OPENAI_API_KEY`
+- [ ] 4.2 Send the bundle's core and targeted views as base64 PNG data URLs; IQMs-only variant sends none
+- [ ] 4.3 Request `response_format` with the `QCFeedback` JSON schema, `temperature=0`; validate through `feedback.py` (free-text JSON also accepted)
+- [ ] 4.4 Refuse to send images unless the data-use acknowledgement flag is set; record the endpoint in the metadata
+- [ ] 4.5 Tests with a mocked client: images attached or absent, schema requested, refusal without the flag, endpoint recorded, free-text reply parsed
 
 ## 5. Batch CLI — `sandbox/model_adapters/run_feedback.py`
 
@@ -50,4 +51,4 @@ As built (section 1):
 - [ ] 5.3 Catch adapter errors per bundle; record them in `feedback.json`; continue
 - [ ] 5.4 Skip bundles with `support` `unsupported`; write a `feedback.json` with status `skipped_unsupported` and no model call
 - [ ] 5.5 Tests: an unsupported bundle is skipped without calling the adapter; a fallback bundle is sent and its result records `support` and `context_suffix`
-- [ ] 5.6 Update `sandbox/README.md` and `sandbox/requirements-experiments.txt`
+- [ ] 5.6 Update `sandbox/README.md` and `sandbox/requirements-experiments.txt` (`anthropic`, `openai`); document serving a model behind an OpenAI-compatible server

@@ -67,7 +67,7 @@ SHALL import model SDKs only when used, so the core package runs without them.
 
 #### Scenario: Core without optional dependencies
 
-- **WHEN** `anthropic` and `torch` are not installed
+- **WHEN** `anthropic` and `openai` are not installed
 - **THEN** `ui/evidence_bundle/feedback.py` imports and its tests pass
 
 ### Requirement: Image delivery
@@ -95,6 +95,31 @@ feedback metadata.
 
 - **WHEN** the Claude adapter runs with `--base_url https://proxy.example.org`
 - **THEN** the request goes to that endpoint and `feedback.json` records it
+
+### Requirement: OpenAI-compatible endpoint
+
+The system SHALL provide an adapter for any OpenAI-compatible chat completions endpoint. It
+SHALL require the endpoint URL and model id, send the bundle's views as images in image
+mode, request the `QCFeedback` JSON schema as the response format, apply the data-use
+acknowledgement rule to every endpoint, and record the endpoint in the feedback metadata.
+
+#### Scenario: Self-hosted model
+
+- **WHEN** the adapter runs with `--base_url http://gpu-host:8000/v1`, a model id and the
+  acknowledgement set
+- **THEN** each file in `views/` is attached, the request asks for the `QCFeedback` schema and
+  `feedback.json` records the endpoint
+
+#### Scenario: Local endpoint still needs the acknowledgement
+
+- **WHEN** the adapter runs in image mode against `http://localhost:8000/v1` without the
+  acknowledgement
+- **THEN** it exits with an error before any request is sent
+
+#### Scenario: Server ignores the response format
+
+- **WHEN** the server replies with free text that contains a valid JSON object
+- **THEN** the reply is parsed and `schema_valid` is true
 
 ### Requirement: Batch feedback CLI
 

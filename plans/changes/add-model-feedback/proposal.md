@@ -13,7 +13,8 @@ not mention. This change defines one feedback schema, one validator and one adap
 - Consistency validation of a reply against its bundle, in core and tested in CI.
 - A model adapter interface, `send(bundle_dir) -> FeedbackResult`.
 - A Claude adapter that attaches the bundle's view images, plus an IQMs-only variant.
-- A LLaVA-OneVision adapter ported from the 4B `chat_image.py`.
+- An OpenAI-compatible HTTP adapter for self-hosted models (for example LLaVA-OneVision
+  behind vLLM), the expected deployment path. It replaces the in-process LLaVA script.
 - A batch CLI that runs one adapter over a tree of bundles and writes `feedback.json` beside
   each `bundle.json`.
 - Adapters import their SDKs lazily; their dependencies stay optional.
@@ -33,9 +34,10 @@ not mention. This change defines one feedback schema, one validator and one adap
 
 - New core code: `ui/evidence_bundle/feedback.py` (schema, validator, `feedback.json` I/O).
   No new runtime dependencies.
-- New optional code: `sandbox/model_adapters/` (`base.py`, `claude.py`, `llava.py`,
-  `run_feedback.py`). Depends on `anthropic`, `torch`, `transformers`, `qwen-vl-utils`
-  through `sandbox/requirements-experiments.txt`.
+- New optional code: `sandbox/model_adapters/` (`base.py`, `claude.py`, `openai_compat.py`,
+  `run_feedback.py`, `prompt.md`). Depends on `anthropic` and `openai` through
+  `sandbox/requirements-experiments.txt`. No `torch` or `transformers`: models run on the
+  server.
 - Retired: `QCDecision` in `run_experiment.py`, `validate_result` in `chat_image.py` (the
   scripts may stay as history but stop being the reference).
 - Depends on `add-evidence-bundle-export`. Consumed by `add-feedback-evaluation` and
