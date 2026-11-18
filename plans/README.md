@@ -43,6 +43,10 @@ Do the changes in this order. Each change has its own branch.
 
 `add-feedback-evaluation` and `add-qc-feedback-panel` can run in parallel.
 
+Each change branch starts from the branch of the change it depends on, so the pull requests
+stack: `24-evidence-bundle-export` ← `40-model-feedback` ← `40-feedback-evaluation` and
+`13-qc-feedback-panel`. After an upstream merge, rebase the next branch onto upstream `main`.
+
 ## Work on a change
 
 1. Create the change branch.
