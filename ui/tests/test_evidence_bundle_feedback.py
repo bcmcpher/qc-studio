@@ -1,6 +1,8 @@
 """Tests for the model feedback schema, consistency check and feedback.json I/O."""
 
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -141,6 +143,11 @@ class TestSchema:
         assert feedback is None
         assert any("verdict" in err for err in errors)
 
+    def test_backticks_inside_plain_json(self):
+        reply = _reply(reasons=["CJV is high; see ```cjv``` in the table."])
+        result = _result(reply=json.dumps(reply))
+        assert result.schema_valid and result.feedback == QCFeedback(**reply)
+
     def test_extract_json_without_object(self):
         with pytest.raises(ValueError, match="no JSON object"):
             extract_json("no braces here")
@@ -161,6 +168,17 @@ class TestConsistency:
 
     def test_metric_named_case_insensitively(self):
         assert check_consistency(QCFeedback(**_reply(reasons=["The Cjv value is high."])), _bundle()) == []
+
+    @pytest.mark.parametrize("reason", ["tsnr=12 is low.", "snr_wm is typical.", "the snrish value"])
+    def test_metric_not_found_inside_another_name(self, reason):
+        bundle = _bundle(metrics=[_metric("snr", flags=["project_outlier"], category="project"), _metric("tsnr"), _metric("snr_wm")])
+        reply = _reply(flagged_metrics=["snr"], reasons=[reason])
+        assert check_consistency(QCFeedback(**reply), bundle) == ["flagged metric 'snr' is not named in any reason"]
+
+    @pytest.mark.parametrize("reason", ["snr=4.1, project percentile 2.", "Low SNR.", "(snr) is low"])
+    def test_metric_named_as_word(self, reason):
+        bundle = _bundle(metrics=[_metric("snr", flags=["project_outlier"], category="project")])
+        assert check_consistency(QCFeedback(**_reply(flagged_metrics=["snr"], reasons=[reason])), bundle) == []
 
     @pytest.mark.parametrize("reasons", [[], ["   "], [f"cjv reason {i}" for i in range(MAX_REASONS + 1)]])
     def test_reason_count(self, reasons):
@@ -245,6 +263,14 @@ class TestFeedbackFile:
         write_feedback(tmp_path, error_result(_bundle(), "rate limited", adapter="fake", model_id="fake-1"))
         assert load_feedback(tmp_path).status == "error"
         assert sorted(p.name for p in tmp_path.iterdir()) == ["feedback.json"]
+
+    def test_file_mode_follows_umask(self, tmp_path):
+        old = os.umask(0o022)
+        try:
+            path = write_feedback(tmp_path, _result())
+        finally:
+            os.umask(old)
+        assert stat.S_IMODE(path.stat().st_mode) == 0o644
 
     def test_invalid_reply_round_trip(self, tmp_path):
         write_feedback(tmp_path, _result(reply="garbage"))

@@ -88,8 +88,17 @@ class FeedbackResult(_Strict):
 
 
 def extract_json(raw: str) -> Any:
-    """Return the first JSON object in ``raw``, after removing a Markdown code fence."""
+    """Return the JSON object in ``raw``: the whole text if it parses, else the first object
+    after removing a Markdown code fence.
+
+    The whole text is tried first, so a structured-output reply with backticks inside a
+    string is not cut at the "fence".
+    """
     text = raw.strip()
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
     fenced = _FENCE.search(text)
     if fenced:
         text = fenced.group(1).strip()
@@ -127,9 +136,10 @@ def check_consistency(feedback: QCFeedback, bundle: EvidenceBundle, min_reasons:
         if metric not in bundle_flags:
             errors.append(f"flagged metric '{metric}' is not flagged in the bundle")
     reasons = _filled(feedback.reasons)
-    text = " ".join(reasons).lower()
+    text = " ".join(reasons)
     for metric in feedback.flagged_metrics:
-        if metric.lower() not in text:
+        # Whole-word match, so "snr" is not found inside "tsnr" or "snr_wm".
+        if not re.search(rf"(?<![\w]){re.escape(metric)}(?![\w])", text, re.IGNORECASE):
             errors.append(f"flagged metric '{metric}' is not named in any reason")
     if not min_reasons <= len(reasons) <= max_reasons:
         errors.append(f"{len(reasons)} reasons; expected {min_reasons} to {max_reasons}")
@@ -211,6 +221,13 @@ def load_feedback(path: Union[str, Path]) -> FeedbackResult:
     return FeedbackResult.model_validate_json(path.read_text(encoding="utf-8"))
 
 
+def _umask() -> int:
+    """The process umask (read by setting it and restoring it at once)."""
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
 def write_feedback(path: Union[str, Path], result: FeedbackResult) -> Path:
     """Write ``result`` to ``path`` (a file, or a bundle folder) and replace any earlier result.
 
@@ -221,6 +238,9 @@ def write_feedback(path: Union[str, Path], result: FeedbackResult) -> Path:
         path = path / FEEDBACK_FILE
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".feedback-", suffix=".json")
     try:
+        # mkstemp makes the file owner-only; give it the mode a plain open() would, so other
+        # users of a shared project folder can read it.
+        os.fchmod(fd, 0o666 & ~_umask())
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(result.model_dump_json(indent=2))
         os.replace(tmp, path)
