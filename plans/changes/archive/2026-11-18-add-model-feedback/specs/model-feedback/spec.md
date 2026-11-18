@@ -26,7 +26,7 @@ replies against it.
 
 The system SHALL check a schema-valid reply against its bundle and record every failed rule
 in `consistency_errors`. Rules: each flagged metric is flagged in the bundle; each flagged
-metric appears in a reason; the reason count is within the configured limits; follow-up is
+metric appears in a reason as a whole word; the reason count is within the configured limits; follow-up is
 present when the decision is not `pass`.
 
 #### Scenario: Metric not flagged in bundle
@@ -57,8 +57,14 @@ version and timestamp, together with the raw reply and validation outcome.
 
 #### Scenario: Skip unchanged
 
-- **WHEN** feedback exists for the same model id and prompt hash and `--overwrite` is not set
+- **WHEN** schema-valid feedback exists from the same adapter, model id, settings and prompt
+  hash and `--overwrite` is not set
 - **THEN** the bundle is skipped
+
+#### Scenario: Failed or invalid run retried
+
+- **WHEN** the stored result is an error or a reply that does not match the schema
+- **THEN** the bundle is sent again
 
 ### Requirement: Model adapter interface
 
@@ -83,13 +89,15 @@ of `PACKAGE.md` out of the prompt; `PACKAGE.md` itself keeps it for human reader
 ### Requirement: Image delivery
 
 An image-aware adapter SHALL send the bundle's view images to the model. An IQMs-only variant
-SHALL send no images. A cloud adapter SHALL refuse to send images unless the user sets an
-explicit data-use acknowledgement.
+SHALL send no images. Each image SHALL follow a text label with its path as `PACKAGE.md` lists
+it. Every adapter SHALL refuse to send images unless the user sets an explicit data-use
+acknowledgement.
 
 #### Scenario: Image variant
 
 - **WHEN** the Claude adapter runs in image mode with the acknowledgement set
-- **THEN** each file in `views/` is attached to the request
+- **THEN** each file in `views/` is attached to the request, after a label such as
+  `Image 1: views/core_axial.png`
 
 #### Scenario: No acknowledgement
 
