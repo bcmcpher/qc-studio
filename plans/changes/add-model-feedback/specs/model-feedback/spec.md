@@ -70,6 +70,16 @@ SHALL import model SDKs only when used, so the core package runs without them.
 - **WHEN** `anthropic` and `openai` are not installed
 - **THEN** `ui/evidence_bundle/feedback.py` imports and its tests pass
 
+### Requirement: Independent model judgment
+
+The prompt SHALL NOT contain the rater's QC verdict. Adapters SHALL leave the "Rater QC" section
+of `PACKAGE.md` out of the prompt; `PACKAGE.md` itself keeps it for human readers.
+
+#### Scenario: Bundle with rater QC
+
+- **WHEN** a bundle's `PACKAGE.md` has a "Rater QC" section with a rater's verdict
+- **THEN** the rendered prompt has every other section and no rater verdict
+
 ### Requirement: Image delivery
 
 An image-aware adapter SHALL send the bundle's view images to the model. An IQMs-only variant

@@ -123,6 +123,18 @@ class TestPrompt:
         images[0].write_bytes(b"re-rendered")
         assert prompt_hash(prompt, images) != before
 
+    def test_rater_qc_left_out(self, bundle_dir):
+        package = "# MRI QC Evidence Package\n\n## Views\n\nview list\n\n## Rater QC\n\nfail by rater1: motion\n\n" "## Later\n\nkept\n"
+        (bundle_dir / "PACKAGE.md").write_text(package, encoding="utf-8")
+        prompt = render_prompt(bundle_dir, images=True)
+        assert "Rater QC" not in prompt and "rater1" not in prompt
+        assert "## Views\n\nview list" in prompt and "## Later\n\nkept" in prompt
+
+    def test_rater_qc_last_section(self, bundle_dir):
+        (bundle_dir / "PACKAGE.md").write_text("# Package\n\n## Views\n\nv\n\n## Rater QC\n\nNo rater QC.\n", encoding="utf-8")
+        prompt = render_prompt(bundle_dir, images=False)
+        assert "Rater QC" not in prompt and "## Views\n\nv" in prompt
+
     def test_template_change_changes_hash(self, bundle_dir, tmp_path_factory):
         template = tmp_path_factory.mktemp("tpl") / "prompt.md"
         template.write_text("Other task.\n$image_section\n$min_reasons $max_reasons\n$package\n", encoding="utf-8")

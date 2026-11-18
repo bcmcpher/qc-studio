@@ -23,6 +23,7 @@ from evidence_bundle.models import EvidenceBundle  # noqa: E402
 BUNDLE_FILE = "bundle.json"
 PACKAGE_FILE = "PACKAGE.md"
 PROMPT_TEMPLATE = Path(__file__).with_name("prompt.md")
+RATER_SECTION = "Rater QC"
 
 IMAGE_SECTION = (
     'The views listed under "Views" are attached as images, in the order listed. Describe what '
@@ -47,9 +48,26 @@ def view_paths(bundle_dir: Path, bundle: EvidenceBundle) -> list[Path]:
     return [Path(bundle_dir) / view.path for view in bundle.views]
 
 
+def strip_section(markdown: str, heading: str) -> str:
+    """Remove the level-2 section ``## <heading>``, up to the next level-2 heading or the end."""
+    kept: list[str] = []
+    skipping = False
+    for line in markdown.splitlines(keepends=True):
+        if line.startswith("## "):
+            skipping = line[3:].strip() == heading
+        if not skipping:
+            kept.append(line)
+    return "".join(kept)
+
+
 def render_prompt(bundle_dir: Path, images: bool, template: Path = PROMPT_TEMPLATE) -> str:
-    """The full prompt: the template with ``PACKAGE.md`` and the image instructions inserted."""
+    """The full prompt: the template with ``PACKAGE.md`` and the image instructions inserted.
+
+    The "Rater QC" section of ``PACKAGE.md`` is left out, so the model judges the scan without
+    the rater's verdict and the evaluation can compare the two independently.
+    """
     package = (Path(bundle_dir) / PACKAGE_FILE).read_text(encoding="utf-8")
+    package = strip_section(package, RATER_SECTION)
     return Template(template.read_text(encoding="utf-8")).substitute(
         package=package.strip(),
         image_section=IMAGE_SECTION if images else NO_IMAGE_SECTION,

@@ -39,6 +39,8 @@ As built (section 2):
   `image_evidence_exp` template adapted to the bundle (flags only from "Flagged metrics",
   deviations as protocol notes, fallback caution, the reason limits) and the reply fields.
   The sandbox "default to pass" heuristics were left out; the evaluation can add them back.
+- `render_prompt` removes the `## Rater QC` section of `PACKAGE.md` (`strip_section`), so the
+  model never sees the rater's verdict. The exported `PACKAGE.md` is unchanged.
 - The prompt hash covers the rendered prompt and each attached image's name and bytes, so
   re-rendered views also mark feedback stale. IQMs-only runs hash the prompt alone.
 - `send` raises only when `bundle.json` is unreadable; a missing `PACKAGE.md` or view, or a

@@ -44,6 +44,10 @@ Sandbox state:
   removed the task and reply rules from it). A template in `sandbox/model_adapters/` holds the
   role, task and reply rules and inserts `PACKAGE.md`; the prompt hash covers the whole
   rendered prompt.
+- **No rater verdict in the prompt.** The template drops the "Rater QC" section of `PACKAGE.md`
+  (decided 2026-11-18). A rater verdict in the prompt would anchor the model, and the
+  evaluation compares model and rater decisions, which must be independent. `PACKAGE.md` keeps
+  the section for human readers.
 - **One result file per run.** `feedback.json` always holds a `FeedbackResult`: metadata, raw
   reply, `schema_valid`, `consistency_errors`, and the parsed `QCFeedback` when valid. This
   replaces the `result.json`/`result_error.json` pair.
