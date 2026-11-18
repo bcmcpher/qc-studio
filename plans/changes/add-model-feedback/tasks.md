@@ -50,12 +50,32 @@ As built (section 2):
 
 ## 3. Claude adapter — `sandbox/model_adapters/claude.py`
 
-- [ ] 3.1 Port the client setup from `run_experiment.py`; lazy `anthropic` import; read `ANTHROPIC_API_KEY`
-- [ ] 3.2 Attach `views/*.png` as image content blocks; add an IQMs-only variant that sends no images
-- [ ] 3.3 Request structured output through a tool whose input schema is the `QCFeedback` JSON schema; `temperature=0`
-- [ ] 3.4 Refuse to send images unless a data-use acknowledgement flag is set
-- [ ] 3.5 Accept an optional `base_url` (`--base_url`, `ANTHROPIC_BASE_URL`); pass it to the client; record it in the metadata
-- [ ] 3.6 Tests with a mocked client: images attached in the image variant, absent in the IQMs-only variant, refusal without the flag, `base_url` passed through
+- [x] 3.1 Port the client setup from `run_experiment.py`; lazy `anthropic` import; read `ANTHROPIC_API_KEY`
+- [x] 3.2 Attach `views/*.png` as image content blocks; add an IQMs-only variant that sends no images
+- [x] 3.3 Request structured output through a tool whose input schema is the `QCFeedback` JSON schema; `temperature=0`
+- [x] 3.4 Refuse to send images unless a data-use acknowledgement flag is set
+- [x] 3.5 Accept an optional `base_url` (`--base_url`, `ANTHROPIC_BASE_URL`); pass it to the client; record it in the metadata
+- [x] 3.6 Tests with a mocked client: images attached in the image variant, absent in the IQMs-only variant, refusal without the flag, `base_url` passed through
+
+As built (section 3):
+
+- 3.3 changed (user decision 2026-11-18): `claude-sonnet-5-5` returns a 400 for forced
+  `tool_choice` and for a non-default `temperature`. The adapter requests
+  `output_config.format` (`json_schema`) instead, sends no temperature, and records
+  `sampling: default`, `output: json_schema` and `max_tokens` (16000) in the settings.
+- `reply_schema()` in `base.py` gives the strict-output form of the `QCFeedback` schema: every
+  property required, `minLength`/`title`/`default` dropped. `feedback.py` still validates the
+  full model. Section 4 reuses it for `response_format`.
+- 3.1: the SDK resolves credentials itself (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` or an
+  `ant auth` profile); the adapter does not read the key. A missing `anthropic` package raises
+  at construction with an install hint, not once per bundle. A `client` argument injects a
+  fake client for tests.
+- A refusal (`stop_reason: refusal`) becomes an `error` result with its category; no fallback
+  model. A reply cut off at `max_tokens` is kept as an invalid `ok` reply with its raw text.
+- Images go before the prompt text in the user message, in bundle order.
+- 3.5: `base_url` comes from the argument, then `ANTHROPIC_BASE_URL`. The `--base_url` flag is
+  wired in section 5 (CLI).
+- 3.4 is inherited from the base constructor; a test covers it for this adapter.
 
 ## 4. OpenAI-compatible adapter — `sandbox/model_adapters/openai_compat.py`
 

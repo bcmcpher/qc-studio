@@ -51,11 +51,16 @@ Sandbox state:
 - **One result file per run.** `feedback.json` always holds a `FeedbackResult`: metadata, raw
   reply, `schema_valid`, `consistency_errors`, and the parsed `QCFeedback` when valid. This
   replaces the `result.json`/`result_error.json` pair.
-- **Structured output for Claude.** Use tool use with the `QCFeedback` JSON schema as the
-  input schema, so the reply is JSON by construction. Keep code-fence stripping for local
-  models.
-- **Deterministic settings where available.** `temperature=0` for Claude, greedy decoding for
-  local models. Record settings in the metadata.
+- **Structured output for Claude.** Request `output_config.format` with the `QCFeedback` JSON
+  schema, so the reply is JSON by construction. Current Claude models (including the default
+  `claude-sonnet-5-5`) reject forced tool use, so the original tool-use plan was dropped
+  (decided 2026-11-18). Keep code-fence stripping for local models.
+- **Deterministic settings where available.** Greedy decoding / `temperature=0` where the model
+  accepts it. Current Claude models reject a non-default temperature, so Claude runs use
+  default sampling and record `sampling: default`; the evaluation measures run-to-run
+  variation with repeat runs. Record settings in the metadata.
+- **No refusal fallback.** A Claude refusal is stored as an `error` result with its category.
+  Server-side fallbacks are not used, so each run's feedback comes from one model.
 - **Respect the bundle's support tier.** `unsupported` bundles are never sent; the CLI writes
   a `skipped_unsupported` result so the panel can say why there is no feedback. `fallback`
   bundles are sent; `PACKAGE.md` already states the context suffix used.

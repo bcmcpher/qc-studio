@@ -1,8 +1,10 @@
 """Tests for the sandbox model adapters (``sandbox/model_adapters``), with fake model clients."""
 
+import base64
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Optional
 
 import pytest
@@ -20,6 +22,7 @@ from model_adapters.base import (  # noqa: E402
     prompt_hash,
     render_prompt,
 )
+from model_adapters.claude import DEFAULT_MODEL, ClaudeAdapter  # noqa: E402
 
 PACKAGE_TEXT = "# MRI QC Evidence Package\n\nFlagged metrics: cjv\n\nCosts $5 {not a placeholder}.\n"
 
@@ -201,3 +204,98 @@ class TestAdapter:
         (bundle_dir / "bundle.json").write_text("{}", encoding="utf-8")
         with pytest.raises(ValueError):
             FakeAdapter().send(bundle_dir)
+
+
+class FakeMessages:
+    """Stands in for ``anthropic.Anthropic().messages``; records each request."""
+
+    def __init__(self, text: str, stop_reason: str = "end_turn", category: Optional[str] = None):
+        self.response = SimpleNamespace(
+            stop_reason=stop_reason,
+            stop_details=SimpleNamespace(category=category) if category else None,
+            content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=text)],
+        )
+        self.requests: list[dict[str, Any]] = []
+
+    def create(self, **kwargs):
+        self.requests.append(kwargs)
+        return self.response
+
+
+def _claude(text: str = json.dumps(REPLY), stop_reason: str = "end_turn", category: Optional[str] = None, **kwargs):
+    messages = FakeMessages(text, stop_reason, category)
+    kwargs.setdefault("acknowledge_data_use", True)
+    return ClaudeAdapter(client=SimpleNamespace(messages=messages), **kwargs), messages
+
+
+class TestClaudeAdapter:
+    def test_images_attached(self, bundle_dir):
+        adapter, messages = _claude()
+        result = adapter.send(bundle_dir)
+        content = messages.requests[0]["messages"][0]["content"]
+        assert [block["type"] for block in content] == ["image", "image", "image", "text"]
+        assert content[0]["source"]["media_type"] == "image/png"
+        assert base64.standard_b64decode(content[0]["source"]["data"]) == b"png views/core_axial.png"
+        assert result.status == "ok" and result.schema_valid
+
+    def test_iqms_only_sends_no_images(self, bundle_dir):
+        adapter, messages = _claude(images=False, acknowledge_data_use=False)
+        result = adapter.send(bundle_dir)
+        content = messages.requests[0]["messages"][0]["content"]
+        assert [block["type"] for block in content] == ["text"]
+        assert NO_IMAGE_SECTION in content[0]["text"]
+        assert result.settings["images"] is False
+
+    def test_images_refused_without_acknowledgement(self):
+        with pytest.raises(DataUseError):
+            ClaudeAdapter(client=SimpleNamespace(messages=None))
+
+    def test_structured_output_requested(self, bundle_dir):
+        adapter, messages = _claude()
+        adapter.send(bundle_dir)
+        request = messages.requests[0]
+        assert request["model"] == DEFAULT_MODEL
+        schema = request["output_config"]["format"]["schema"]
+        assert request["output_config"]["format"]["type"] == "json_schema"
+        assert schema["additionalProperties"] is False
+        assert set(schema["required"]) == set(schema["properties"])
+        assert "tool_choice" not in request and "temperature" not in request
+
+    def test_settings_recorded(self, bundle_dir):
+        result = _claude()[0].send(bundle_dir)
+        assert result.settings == {"images": True, "max_tokens": 16000, "sampling": "default", "output": "json_schema"}
+        assert result.endpoint is None
+
+    def test_base_url_from_argument(self, bundle_dir):
+        result = _claude(base_url="https://proxy.example.org")[0].send(bundle_dir)
+        assert result.endpoint == "https://proxy.example.org"
+
+    def test_base_url_from_environment(self, bundle_dir, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://env.example.org")
+        assert _claude()[0].send(bundle_dir).endpoint == "https://env.example.org"
+
+    def test_base_url_passed_to_client(self, monkeypatch):
+        seen = {}
+
+        class FakeAnthropic:
+            def __init__(self, **kwargs):
+                seen.update(kwargs)
+
+        monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+        ClaudeAdapter(base_url="https://proxy.example.org", acknowledge_data_use=True)
+        assert seen == {"base_url": "https://proxy.example.org"}
+
+    def test_missing_sdk(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "anthropic", None)
+        with pytest.raises(ImportError, match="uv pip install anthropic"):
+            ClaudeAdapter(acknowledge_data_use=True)
+
+    def test_refusal_recorded_as_error(self, bundle_dir):
+        result = _claude(text="", stop_reason="refusal", category="bio")[0].send(bundle_dir)
+        assert result.status == "error"
+        assert result.error == "RefusalError: model declined the request (category: bio)"
+
+    def test_truncated_reply_kept(self, bundle_dir):
+        result = _claude(text='{"decision": "pass", "conf', stop_reason="max_tokens")[0].send(bundle_dir)
+        assert result.status == "ok" and not result.schema_valid
+        assert result.raw_reply == '{"decision": "pass", "conf'

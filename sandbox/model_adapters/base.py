@@ -17,7 +17,7 @@ if str(_UI_DIR) not in sys.path:
     sys.path.insert(0, str(_UI_DIR))
 
 from evidence_bundle.constants import MAX_REASONS, MIN_REASONS  # noqa: E402
-from evidence_bundle.feedback import FeedbackResult, error_result, reply_result  # noqa: E402
+from evidence_bundle.feedback import FeedbackResult, QCFeedback, error_result, reply_result  # noqa: E402
 from evidence_bundle.models import EvidenceBundle  # noqa: E402
 
 BUNDLE_FILE = "bundle.json"
@@ -74,6 +74,25 @@ def render_prompt(bundle_dir: Path, images: bool, template: Path = PROMPT_TEMPLA
         min_reasons=MIN_REASONS,
         max_reasons=MAX_REASONS,
     )
+
+
+def reply_schema() -> dict[str, Any]:
+    """The ``QCFeedback`` JSON schema for a model's structured-output mode.
+
+    Every property is required and length constraints are dropped, as strict structured output
+    expects; ``feedback.py`` still enforces the full model on the reply.
+    """
+
+    def clean(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {key: clean(value) for key, value in node.items() if key not in {"minLength", "maxLength", "title", "default"}}
+        if isinstance(node, list):
+            return [clean(item) for item in node]
+        return node
+
+    schema = clean(QCFeedback.model_json_schema())
+    schema["required"] = list(schema["properties"])
+    return schema
 
 
 def prompt_hash(prompt: str, images: Sequence[Path] = ()) -> str:
