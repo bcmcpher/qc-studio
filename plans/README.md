@@ -56,7 +56,9 @@ The OpenSpec CLI does this step automatically. Here, do it by hand on the change
 1. Merge each delta into `plans/specs/<capability>/spec.md`. Copy `ADDED` requirements, replace
    `MODIFIED` requirements, and delete `REMOVED` requirements.
 2. Move the change with `git mv plans/changes/<change> plans/changes/archive/<YYYY-MM-DD>-<change>`.
-3. Commit, then merge the branch.
+3. Commit on the change branch. Do not merge it into the fork's `main`: the change reaches
+   `main` through a pull request to `nipoppy/qc-studio`. The fork's `main` only mirrors
+   upstream `main`.
 
 ## Validate
 
