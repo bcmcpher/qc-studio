@@ -11,15 +11,11 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from .base import ModelAdapter, Reply, image_label, reply_schema
+from .base import ModelAdapter, RefusalError, Reply, image_label, reply_schema
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_MAX_TOKENS = 16000
 BASE_URL_ENV = "ANTHROPIC_BASE_URL"
-
-
-class RefusalError(RuntimeError):
-    """The model declined the request."""
 
 
 def image_block(path: Path) -> dict[str, Any]:

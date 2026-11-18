@@ -41,6 +41,10 @@ class DataUseError(RuntimeError):
     """Images would be sent without the data-use acknowledgement."""
 
 
+class RefusalError(RuntimeError):
+    """The model declined the request; stored as an ``error`` result, not retried elsewhere."""
+
+
 def load_bundle(bundle_dir: Path) -> EvidenceBundle:
     """Read ``bundle.json`` from a bundle folder."""
     return EvidenceBundle.model_validate_json((Path(bundle_dir) / BUNDLE_FILE).read_text(encoding="utf-8"))

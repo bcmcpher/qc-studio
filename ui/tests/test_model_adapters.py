@@ -26,6 +26,7 @@ from model_adapters.base import (  # noqa: E402
     reply_schema,
 )
 from model_adapters.claude import DEFAULT_MODEL, ClaudeAdapter  # noqa: E402
+from model_adapters.openai_compat import OpenAICompatAdapter  # noqa: E402
 
 PACKAGE_TEXT = "# MRI QC Evidence Package\n\nFlagged metrics: cjv\n\nCosts $5 {not a placeholder}.\n"
 
@@ -317,6 +318,127 @@ class TestClaudeAdapter:
         result = _claude(text='{"decision": "pass", "conf', stop_reason="max_tokens")[0].send(bundle_dir)
         assert result.status == "ok" and not result.schema_valid
         assert result.raw_reply == '{"decision": "pass", "conf'
+
+
+GPU_HOST = "http://gpu-host:8000/v1"
+
+
+class FakeCompletions:
+    """Stands in for ``openai.OpenAI().chat.completions``; records each request."""
+
+    def __init__(self, content: Optional[str], refusal: Optional[str] = None):
+        message = SimpleNamespace(content=content, refusal=refusal)
+        self.response = SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")])
+        self.requests: list[dict[str, Any]] = []
+
+    def create(self, **kwargs):
+        self.requests.append(kwargs)
+        return self.response
+
+
+def _compat(content: Optional[str] = json.dumps(REPLY), refusal: Optional[str] = None, **kwargs):
+    completions = FakeCompletions(content, refusal)
+    kwargs.setdefault("acknowledge_data_use", True)
+    kwargs.setdefault("base_url", GPU_HOST)
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    return OpenAICompatAdapter("llava-onevision", client=client, **kwargs), completions
+
+
+def _fake_openai(monkeypatch) -> dict[str, Any]:
+    """Install a fake ``openai`` module; return the keyword arguments its client receives."""
+    seen: dict[str, Any] = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+    return seen
+
+
+class TestOpenAICompatAdapter:
+    def test_images_attached(self, bundle_dir):
+        adapter, completions = _compat()
+        result = adapter.send(bundle_dir)
+        content = completions.requests[0]["messages"][0]["content"]
+        assert [part["type"] for part in content] == ["text", "image_url"] * 3 + ["text"]
+        assert content[2]["text"] == "Image 2: views/core_coronal.png"
+        url = content[1]["image_url"]["url"]
+        assert url.startswith("data:image/png;base64,")
+        assert base64.standard_b64decode(url.split(",", 1)[1]) == b"png views/core_axial.png"
+        assert result.status == "ok" and result.schema_valid
+
+    def test_iqms_only_sends_no_images(self, bundle_dir):
+        adapter, completions = _compat(images=False, acknowledge_data_use=False)
+        adapter.send(bundle_dir)
+        content = completions.requests[0]["messages"][0]["content"]
+        assert [part["type"] for part in content] == ["text"]
+        assert NO_IMAGE_SECTION in content[0]["text"]
+
+    def test_schema_requested(self, bundle_dir):
+        adapter, completions = _compat()
+        adapter.send(bundle_dir)
+        request = completions.requests[0]
+        assert request["model"] == "llava-onevision" and request["temperature"] == 0
+        assert request["response_format"]["type"] == "json_schema"
+        assert request["response_format"]["json_schema"]["schema"] == reply_schema()
+        assert request["response_format"]["json_schema"]["strict"] is True
+
+    def test_local_endpoint_needs_acknowledgement(self):
+        with pytest.raises(DataUseError):
+            _compat(base_url="http://localhost:8000/v1", acknowledge_data_use=False)
+
+    def test_endpoint_and_settings_recorded(self, bundle_dir):
+        result = _compat()[0].send(bundle_dir)
+        assert result.endpoint == GPU_HOST and result.adapter == "openai_compat"
+        assert result.settings == {"images": True, "max_tokens": 2048, "temperature": 0, "output": "json_schema"}
+
+    def test_free_text_reply_parsed(self, bundle_dir):
+        text = f"Here is my assessment:\n```json\n{json.dumps(REPLY)}\n```\nDone."
+        result = _compat(content=text)[0].send(bundle_dir)
+        assert result.schema_valid and result.feedback is not None and result.feedback.decision == "fail"
+
+    def test_refusal_recorded_as_error(self, bundle_dir):
+        result = _compat(content=None, refusal="I can't help with that.")[0].send(bundle_dir)
+        assert result.status == "error" and result.error == "RefusalError: model declined the request: I can't help with that."
+
+    def test_empty_reply_kept_invalid(self, bundle_dir):
+        result = _compat(content=None)[0].send(bundle_dir)
+        assert result.status == "ok" and not result.schema_valid
+
+    def test_model_id_required(self):
+        with pytest.raises(ValueError, match="model id"):
+            OpenAICompatAdapter("", base_url=GPU_HOST, acknowledge_data_use=True, client=SimpleNamespace())
+
+    def test_endpoint_required(self, monkeypatch):
+        _fake_openai(monkeypatch)
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        with pytest.raises(ValueError, match="OPENAI_BASE_URL"):
+            OpenAICompatAdapter("m", acknowledge_data_use=True)
+
+    def test_endpoint_and_key_from_environment(self, monkeypatch):
+        seen = _fake_openai(monkeypatch)
+        monkeypatch.setenv("OPENAI_BASE_URL", GPU_HOST)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        adapter = OpenAICompatAdapter("m", acknowledge_data_use=True)
+        assert adapter.endpoint == GPU_HOST
+        assert seen == {"base_url": GPU_HOST, "api_key": "sk-test"}
+
+    def test_key_optional(self, monkeypatch):
+        seen = _fake_openai(monkeypatch)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        OpenAICompatAdapter("m", base_url=GPU_HOST, acknowledge_data_use=True)
+        assert seen == {"base_url": GPU_HOST, "api_key": "EMPTY"}
+
+    def test_injected_client_ignores_environment(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://env-host/v1")
+        with pytest.raises(ValueError, match="endpoint is required"):
+            _compat(base_url=None)
+
+    def test_missing_sdk(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "openai", None)
+        with pytest.raises(ImportError, match="uv pip install openai"):
+            OpenAICompatAdapter("m", base_url=GPU_HOST, acknowledge_data_use=True)
 
 
 def _rewrite_bundle(bundle_dir: Path, **changes) -> None:

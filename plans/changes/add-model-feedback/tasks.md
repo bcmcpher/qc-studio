@@ -93,11 +93,27 @@ Review fixes (mid-change review 2026-11-18):
 
 ## 4. OpenAI-compatible adapter — `sandbox/model_adapters/openai_compat.py`
 
-- [ ] 4.1 Lazy `openai` import; required `base_url` (`--base_url`, `OPENAI_BASE_URL`) and model id; optional `OPENAI_API_KEY`
-- [ ] 4.2 Send the bundle's core and targeted views as base64 PNG data URLs; IQMs-only variant sends none
-- [ ] 4.3 Request `response_format` with the `QCFeedback` JSON schema, `temperature=0`; validate through `feedback.py` (free-text JSON also accepted)
-- [ ] 4.4 Refuse to send images unless the data-use acknowledgement flag is set; record the endpoint in the metadata
-- [ ] 4.5 Tests with a mocked client: images attached or absent, schema requested, refusal without the flag, endpoint recorded, free-text reply parsed
+- [x] 4.1 Lazy `openai` import; required `base_url` (`--base_url`, `OPENAI_BASE_URL`) and model id; optional `OPENAI_API_KEY`
+- [x] 4.2 Send the bundle's core and targeted views as base64 PNG data URLs; IQMs-only variant sends none
+- [x] 4.3 Request `response_format` with the `QCFeedback` JSON schema, `temperature=0`; validate through `feedback.py` (free-text JSON also accepted)
+- [x] 4.4 Refuse to send images unless the data-use acknowledgement flag is set; record the endpoint in the metadata
+- [x] 4.5 Tests with a mocked client: images attached or absent, schema requested, refusal without the flag, endpoint recorded, free-text reply parsed
+
+As built (section 4):
+
+- `OpenAICompatAdapter(model_id, base_url, ...)` calls `chat.completions.create` with the same
+  content layout as the Claude adapter: a label `Image N: views/<file>.png` before each image,
+  then the prompt text. Views go as `image_url` data URLs.
+- 4.1: a missing model id or endpoint raises `ValueError` at construction. Without
+  `OPENAI_API_KEY` the client gets the placeholder key `EMPTY`, since the SDK requires a key and
+  self-hosted servers usually ignore it. The key is never recorded.
+- 4.3: `response_format` is `json_schema` with `reply_schema()` (shared with the Claude
+  adapter), `strict: true`, name `qc_feedback`. Settings record `temperature: 0`,
+  `max_tokens` (2048; the reply is a short JSON object) and `output: json_schema`.
+- A `refusal` on the reply message becomes an `error` result (`RefusalError`, now in
+  `base.py` for both adapters). An empty or truncated reply is kept as an invalid `ok` reply.
+- As in the Claude adapter, an injected client records only the `base_url` argument, so it must
+  be passed; `OPENAI_BASE_URL` is read only when the adapter builds its own client.
 
 ## 5. Batch CLI — `sandbox/model_adapters/run_feedback.py`
 
