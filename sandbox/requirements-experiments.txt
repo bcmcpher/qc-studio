@@ -3,8 +3,11 @@
 
 -r ../requirements.txt
 
-# Cloud model experiments
-anthropic>=0.39
+# Model adapters (sandbox/model_adapters) and cloud model experiments
+# anthropic 1.x or later: output_config structured output, no sampling parameters
+anthropic>=1
+# openai: any OpenAI-compatible server; response_format json_schema needs 1.40 or later
+openai>=1.40
 
 # Local VLM experiments
 matplotlib>=3.7

@@ -2,6 +2,7 @@
 
 import base64
 import json
+import shutil
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from typing import Any, Optional
 
 import pytest
 
+from evidence_bundle.feedback import load_feedback
 from evidence_bundle.models import DistributionContext, EvidenceBundle, MetricEvidence, ViewRef
 
 SANDBOX_DIR = Path(__file__).resolve().parents[2] / "sandbox"
@@ -27,6 +29,7 @@ from model_adapters.base import (  # noqa: E402
 )
 from model_adapters.claude import DEFAULT_MODEL, ClaudeAdapter  # noqa: E402
 from model_adapters.openai_compat import OpenAICompatAdapter  # noqa: E402
+from model_adapters import run_feedback  # noqa: E402
 
 PACKAGE_TEXT = "# MRI QC Evidence Package\n\nFlagged metrics: cjv\n\nCosts $5 {not a placeholder}.\n"
 
@@ -478,3 +481,113 @@ class TestReviewFixes:
 
     def test_image_label(self, bundle_dir):
         assert image_label(2, bundle_dir / "views" / "core_coronal.png") == "Image 2: views/core_coronal.png"
+
+
+def _tree(bundle_dir: Path, tmp_path_factory, names=("sub-01", "sub-02")) -> Path:
+    """Copies of the fixture bundle in sibling folders under a fresh root."""
+    root = tmp_path_factory.mktemp("bundles")
+    for name in names:
+        shutil.copytree(bundle_dir, root / name / "anat")
+    return root
+
+
+class CountingAdapter(FakeAdapter):
+    """Fails on the bundles whose path contains ``fail_on``."""
+
+    def __init__(self, fail_on: Optional[str] = None, **kwargs):
+        super().__init__(**kwargs)
+        self.fail_on = fail_on
+
+    def complete(self, prompt, images):
+        if self.fail_on and any(self.fail_on in str(image) for image in images):
+            raise RuntimeError("server unavailable")
+        return super().complete(prompt, images)
+
+
+class TestRunFeedback:
+    def test_feedback_written_beside_each_bundle(self, bundle_dir, tmp_path_factory):
+        root = _tree(bundle_dir, tmp_path_factory)
+        counts = run_feedback.run(root, FakeAdapter())
+        assert counts == {"ok": 2}
+        assert load_feedback(root / "sub-01" / "anat").schema_valid
+
+    def test_error_recorded_and_run_continues(self, bundle_dir, tmp_path_factory):
+        root = _tree(bundle_dir, tmp_path_factory)
+        counts = run_feedback.run(root, CountingAdapter(fail_on="sub-01"))
+        assert counts == {"error": 1, "ok": 1}
+        assert load_feedback(root / "sub-01" / "anat").error == "RuntimeError: server unavailable"
+        assert load_feedback(root / "sub-02" / "anat").status == "ok"
+
+    def test_unreadable_bundle_skipped(self, bundle_dir, tmp_path_factory):
+        root = _tree(bundle_dir, tmp_path_factory)
+        (root / "sub-01" / "anat" / "bundle.json").write_text("{}", encoding="utf-8")
+        counts = run_feedback.run(root, FakeAdapter())
+        assert counts == {"unreadable": 1, "ok": 1}
+        assert not (root / "sub-01" / "anat" / "feedback.json").exists()
+
+    def test_unsupported_bundle_not_sent(self, bundle_dir):
+        metric = _metric("cjv").model_copy(update=dict(direction_of_concern="context_dependent", evidence_strength="none"))
+        metric = metric.model_copy(update=dict(project_percentile=None, reference_percentile=None, context_category=None))
+        _rewrite_bundle(bundle_dir, suffix="PDw", support="unsupported", context_suffix=None, reference=None, metrics=[metric])
+        adapter = FakeAdapter()
+        assert run_feedback.run(bundle_dir, adapter) == {"skipped_unsupported": 1}
+        assert adapter.calls == []
+        assert load_feedback(bundle_dir).status == "skipped_unsupported"
+        assert run_feedback.run(bundle_dir, adapter) == {"kept": 1}
+
+    def test_fallback_bundle_sent(self, bundle_dir):
+        metrics = [_metric("cjv").model_copy(update=dict(reference_percentile=None))]
+        _rewrite_bundle(bundle_dir, suffix="FLAIR", support="fallback", context_suffix="T2w", reference=None, metrics=metrics)
+        adapter = FakeAdapter(reply=json.dumps({**REPLY, "decision": "pass", "flagged_metrics": [], "recommended_followup": []}))
+        run_feedback.run(bundle_dir, adapter)
+        result = load_feedback(bundle_dir)
+        assert len(adapter.calls) == 1
+        assert (result.status, result.support, result.context_suffix) == ("ok", "fallback", "T2w")
+
+    def test_current_feedback_kept(self, bundle_dir):
+        adapter = FakeAdapter()
+        run_feedback.run(bundle_dir, adapter)
+        assert run_feedback.run(bundle_dir, adapter) == {"kept": 1}
+        assert len(adapter.calls) == 1
+
+    def test_overwrite_reruns(self, bundle_dir):
+        adapter = FakeAdapter()
+        run_feedback.run(bundle_dir, adapter)
+        assert run_feedback.run(bundle_dir, adapter, overwrite=True) == {"ok": 1}
+        assert len(adapter.calls) == 2
+
+    def test_changed_prompt_reruns(self, bundle_dir):
+        adapter = FakeAdapter()
+        run_feedback.run(bundle_dir, adapter)
+        (bundle_dir / "PACKAGE.md").write_text(PACKAGE_TEXT + "\nRevised.\n", encoding="utf-8")
+        assert run_feedback.run(bundle_dir, adapter) == {"ok": 1}
+
+    def test_other_model_reruns(self, bundle_dir):
+        run_feedback.run(bundle_dir, FakeAdapter())
+        other = FakeAdapter()
+        other.model_id = "fake-2"
+        assert run_feedback.run(bundle_dir, other) == {"ok": 1}
+
+    def test_error_result_retried(self, bundle_dir):
+        run_feedback.run(bundle_dir, FakeAdapter(error=RuntimeError("timeout")))
+        assert run_feedback.run(bundle_dir, FakeAdapter()) == {"ok": 1}
+
+    def test_cli_refuses_images_without_acknowledgement(self, bundle_dir, monkeypatch):
+        seen = _fake_openai(monkeypatch)
+        code = run_feedback.main([str(bundle_dir), "--adapter", "openai_compat", "--base_url", "http://localhost:8000/v1", "--model_id", "m"])
+        assert code == 2 and seen == {}
+        assert not (bundle_dir / "feedback.json").exists()
+
+    def test_cli_builds_adapter(self, monkeypatch):
+        seen = _fake_openai(monkeypatch)
+        args = run_feedback.parse_args(["x", "--adapter", "openai_compat", "--base_url", GPU_HOST, "--model_id", "m", "--iqms_only"])
+        adapter = run_feedback.make_adapter(args)
+        assert isinstance(adapter, OpenAICompatAdapter) and adapter.images is False
+        assert seen["base_url"] == GPU_HOST
+
+    def test_cli_model_from_environment(self, monkeypatch):
+        _fake_sdk(monkeypatch)
+        monkeypatch.setenv("CLAUDE_MODEL", "claude-opus-5-5")
+        args = run_feedback.parse_args(["x", "--adapter", "claude", "--acknowledge_data_use", "--max_tokens", "800"])
+        adapter = run_feedback.make_adapter(args)
+        assert adapter.model_id == "claude-opus-5-5" and adapter.settings["max_tokens"] == 800

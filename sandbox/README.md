@@ -28,6 +28,59 @@ ANTHROPIC_API_KEY=... .venv/bin/python sandbox/cloud_model_experiments/IQMs_only
 
 Run a local LLaVA experiment from its own folder or from the repo root. Generated files are written back to that experiment folder.
 
+## Model Feedback on Evidence Bundles
+
+`model_adapters/` sends exported evidence bundles to a model. It writes a `feedback.json` beside each `bundle.json`. The QC panel reads that file; it never calls a model.
+
+Install the adapter dependencies into the project environment:
+
+```bash
+uv pip install --python .venv/bin/python anthropic openai
+```
+
+### Data use
+
+Image mode sends the bundle's MRI views to the model endpoint. This can breach a data-use agreement, also for a server on your own network. The CLI refuses image mode without `--acknowledge_data_use`. Use `--iqms_only` to send only the metrics text.
+
+### Run Claude
+
+```bash
+ANTHROPIC_API_KEY=... .venv/bin/python sandbox/model_adapters/run_feedback.py BUNDLE_ROOT \
+    --adapter claude --acknowledge_data_use
+```
+
+- The default model is `claude-sonnet-5-5`. Set another with `--model_id` or `CLAUDE_MODEL`.
+- Set a proxy or institutional endpoint with `--base_url` or `ANTHROPIC_BASE_URL`.
+
+### Run a self-hosted model
+
+The `openai_compat` adapter calls any OpenAI-compatible chat completions server. The same command works for a remote GPU host and for a local workstation.
+
+1. Start the server on the GPU machine, for example with vLLM:
+
+   ```bash
+   vllm serve llava-hf/llava-onevision-qwen2-7b-ov-hf --port 8000
+   ```
+
+2. Run the CLI with the server URL and the model name the server reports:
+
+   ```bash
+   .venv/bin/python sandbox/model_adapters/run_feedback.py BUNDLE_ROOT \
+       --adapter openai_compat --base_url http://gpu-host:8000/v1 \
+       --model_id llava-hf/llava-onevision-qwen2-7b-ov-hf --acknowledge_data_use
+   ```
+
+- `--base_url` (or `OPENAI_BASE_URL`) and `--model_id` (or `OPENAI_MODEL`) are required.
+- `OPENAI_API_KEY` is optional. Without it, the adapter sends the placeholder key `EMPTY`.
+- The adapter requests the `QCFeedback` JSON schema through `response_format`. A server that ignores it can reply in free text; the CLI extracts the JSON object from the text.
+
+### Reruns
+
+- A bundle is skipped when its `feedback.json` came from the same adapter, model and prompt hash. The prompt hash covers the prompt text and the attached images.
+- An `error` result is always retried. Use `--overwrite` to rerun every bundle.
+- A bundle with `support` `unsupported` is never sent. It gets a `skipped_unsupported` result.
+- An error for one bundle is recorded in its `feedback.json`, and the run continues. The CLI exits with status 1 only when a `bundle.json` cannot be read.
+
 ## Adding a New Markdown Package Experiment
 
 Create a new experiment folder with its own template and renderer:

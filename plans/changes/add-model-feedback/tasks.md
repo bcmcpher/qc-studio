@@ -117,9 +117,30 @@ As built (section 4):
 
 ## 5. Batch CLI — `sandbox/model_adapters/run_feedback.py`
 
-- [ ] 5.1 Walk a bundle tree; run one adapter per invocation; write `feedback.json` beside each `bundle.json`
-- [ ] 5.2 Skip bundles that already have feedback from the same model and prompt hash unless `--overwrite`
-- [ ] 5.3 Catch adapter errors per bundle; record them in `feedback.json`; continue
-- [ ] 5.4 Skip bundles with `support` `unsupported`; write a `feedback.json` with status `skipped_unsupported` and no model call
-- [ ] 5.5 Tests: an unsupported bundle is skipped without calling the adapter; a fallback bundle is sent and its result records `support` and `context_suffix`
-- [ ] 5.6 Update `sandbox/README.md` and `sandbox/requirements-experiments.txt` (`anthropic`, `openai`); document serving a model behind an OpenAI-compatible server
+- [x] 5.1 Walk a bundle tree; run one adapter per invocation; write `feedback.json` beside each `bundle.json`
+- [x] 5.2 Skip bundles that already have feedback from the same model and prompt hash unless `--overwrite`
+- [x] 5.3 Catch adapter errors per bundle; record them in `feedback.json`; continue
+- [x] 5.4 Skip bundles with `support` `unsupported`; write a `feedback.json` with status `skipped_unsupported` and no model call
+- [x] 5.5 Tests: an unsupported bundle is skipped without calling the adapter; a fallback bundle is sent and its result records `support` and `context_suffix`
+- [x] 5.6 Update `sandbox/README.md` and `sandbox/requirements-experiments.txt` (`anthropic`, `openai`); document serving a model behind an OpenAI-compatible server
+
+As built (section 5):
+
+- `run_feedback.py` runs as a script (`.venv/bin/python sandbox/model_adapters/run_feedback.py
+  BUNDLE_ROOT --adapter claude|openai_compat ...`) or as a module. Options: `--model_id`
+  (env `CLAUDE_MODEL` / `OPENAI_MODEL`, as the sandbox `run_experiment.py`), `--base_url`,
+  `--iqms_only`, `--acknowledge_data_use`, `--max_tokens`, `--overwrite`. `run(root, adapter)`
+  holds the loop so tests pass a fake adapter.
+- 5.2: feedback is current when adapter name, model id and prompt hash all match. The hash is
+  computed without sending (`ModelAdapter.request`). An `error` result is never current, so a
+  rerun retries it. An unreadable `feedback.json` is replaced.
+- 5.3: `send` already stores adapter errors. The loop also catches what `send` raises (an
+  unreadable `bundle.json`): it logs it, writes nothing for that bundle and continues. The exit
+  status is 1 only in that case; 2 for bad options, including image mode without the
+  acknowledgement (checked before any request).
+- 5.4: an existing `skipped_unsupported` result is kept.
+- One `feedback.json` per bundle: a run with another model or mode replaces the previous
+  result. Keeping several runs side by side is left to add-feedback-evaluation.
+- 5.6: requirements pin `anthropic>=1` (`output_config`, no sampling parameters) and
+  `openai>=1.40` (`response_format` `json_schema`). The README example serves
+  LLaVA-OneVision with vLLM.
