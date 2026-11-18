@@ -152,6 +152,14 @@ class TestSchema:
         with pytest.raises(ValueError, match="no JSON object"):
             extract_json("no braces here")
 
+    def test_stray_brace_in_prose_before_json(self):
+        reply = _reply()
+        assert extract_json(f"Using the {{project}} context: {json.dumps(reply)}") == reply
+
+    def test_extract_json_bad_object_only(self):
+        with pytest.raises(ValueError):
+            extract_json("prefix {not json}")
+
 
 class TestConsistency:
     def test_consistent(self):
@@ -271,6 +279,15 @@ class TestFeedbackFile:
         finally:
             os.umask(old)
         assert stat.S_IMODE(path.stat().st_mode) == 0o644
+
+    def test_write_leaves_umask_alone(self, tmp_path):
+        old = os.umask(0o027)
+        try:
+            path = write_feedback(tmp_path, _result())
+            assert os.umask(0o027) == 0o027
+        finally:
+            os.umask(old)
+        assert stat.S_IMODE(path.stat().st_mode) == 0o640
 
     def test_invalid_reply_round_trip(self, tmp_path):
         write_feedback(tmp_path, _result(reply="garbage"))

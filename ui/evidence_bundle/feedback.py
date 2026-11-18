@@ -9,7 +9,7 @@ can read and validate feedback without them.
 import json
 import os
 import re
-import tempfile
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping, Optional, Union
@@ -88,8 +88,8 @@ class FeedbackResult(_Strict):
 
 
 def extract_json(raw: str) -> Any:
-    """Return the JSON object in ``raw``: the whole text if it parses, else the first object
-    after removing a Markdown code fence.
+    """Return the JSON object in ``raw``: the whole text if it parses, else the first ``{`` that
+    starts a parseable object, after removing a Markdown code fence.
 
     The whole text is tried first, so a structured-output reply with backticks inside a
     string is not cut at the "fence".
@@ -102,11 +102,20 @@ def extract_json(raw: str) -> Any:
     fenced = _FENCE.search(text)
     if fenced:
         text = fenced.group(1).strip()
+    # Prose before the object may hold a stray "{"; try each one until an object parses.
+    decoder = json.JSONDecoder()
     start = text.find("{")
-    if start < 0:
-        raise ValueError("no JSON object in the reply")
-    value, _ = json.JSONDecoder().raw_decode(text, start)
-    return value
+    error: Optional[ValueError] = None
+    while start >= 0:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except ValueError as err:
+            error = error or err
+        else:
+            if isinstance(value, dict):
+                return value
+        start = text.find("{", start + 1)
+    raise error or ValueError("no JSON object in the reply")
 
 
 def parse_reply(raw: Union[str, Mapping[str, Any]]) -> tuple[Optional[QCFeedback], list[str]]:
@@ -221,13 +230,6 @@ def load_feedback(path: Union[str, Path]) -> FeedbackResult:
     return FeedbackResult.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _umask() -> int:
-    """The process umask (read by setting it and restoring it at once)."""
-    mask = os.umask(0)
-    os.umask(mask)
-    return mask
-
-
 def write_feedback(path: Union[str, Path], result: FeedbackResult) -> Path:
     """Write ``result`` to ``path`` (a file, or a bundle folder) and replace any earlier result.
 
@@ -236,11 +238,11 @@ def write_feedback(path: Union[str, Path], result: FeedbackResult) -> Path:
     path = Path(path)
     if path.is_dir():
         path = path / FEEDBACK_FILE
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".feedback-", suffix=".json")
+    tmp = path.parent / f".feedback-{secrets.token_hex(8)}.json"
+    # Mode 0o666 lets the kernel apply the umask, as a plain open() would, so other users of a
+    # shared project folder can read the file. O_EXCL never reuses an existing file.
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
-        # mkstemp makes the file owner-only; give it the mode a plain open() would, so other
-        # users of a shared project folder can read it.
-        os.fchmod(fd, 0o666 & ~_umask())
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(result.model_dump_json(indent=2))
         os.replace(tmp, path)
