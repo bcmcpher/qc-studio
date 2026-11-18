@@ -3,6 +3,7 @@
 import base64
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -591,3 +592,46 @@ class TestRunFeedback:
         args = run_feedback.parse_args(["x", "--adapter", "claude", "--acknowledge_data_use", "--max_tokens", "800"])
         adapter = run_feedback.make_adapter(args)
         assert adapter.model_id == "claude-opus-5-5" and adapter.settings["max_tokens"] == 800
+
+    def test_invalid_reply_retried(self, bundle_dir):
+        run_feedback.run(bundle_dir, FakeAdapter(reply='{"decision": "pass", "conf'))
+        assert not load_feedback(bundle_dir).schema_valid
+        assert run_feedback.run(bundle_dir, FakeAdapter()) == {"ok": 1}
+
+    def test_changed_settings_rerun(self, bundle_dir):
+        class TunedAdapter(FakeAdapter):
+            @property
+            def settings(self):
+                return {**super().settings, "max_tokens": 8000}
+
+        run_feedback.run(bundle_dir, FakeAdapter())
+        assert run_feedback.run(bundle_dir, TunedAdapter()) == {"ok": 1}
+        assert load_feedback(bundle_dir).settings["max_tokens"] == 8000
+
+    def test_unsupported_rewritten_for_other_model(self, bundle_dir):
+        metric = _metric("cjv").model_copy(update=dict(direction_of_concern="context_dependent", evidence_strength="none"))
+        metric = metric.model_copy(update=dict(project_percentile=None, reference_percentile=None, context_category=None))
+        _rewrite_bundle(bundle_dir, suffix="PDw", support="unsupported", context_suffix=None, reference=None, metrics=[metric])
+        run_feedback.run(bundle_dir, FakeAdapter())
+        other = FakeAdapter()
+        other.model_id = "fake-2"
+        assert run_feedback.run(bundle_dir, other) == {"skipped_unsupported": 1}
+        assert load_feedback(bundle_dir).model_id == "fake-2" and other.calls == []
+
+    def test_unrenderable_package_replaces_old_result(self, bundle_dir):
+        run_feedback.run(bundle_dir, FakeAdapter())
+        (bundle_dir / "PACKAGE.md").write_bytes(b"\xff\xfe not utf-8")
+        assert run_feedback.run(bundle_dir, FakeAdapter()) == {"error": 1}
+        assert "UnicodeDecodeError" in load_feedback(bundle_dir).error
+
+    def test_script_imports_without_sandbox_on_path(self):
+        script = SANDBOX_DIR / "model_adapters" / "run_feedback.py"
+        done = subprocess.run([sys.executable, "-I", str(script), "--help"], capture_output=True, text=True)
+        assert done.returncode == 0 and "--adapter" in done.stdout
+
+
+def test_hash_covers_view_folder(tmp_path):
+    for folder in ("views", "other"):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "a.png").write_bytes(b"same")
+    assert prompt_hash("p", [tmp_path / "views" / "a.png"]) != prompt_hash("p", [tmp_path / "other" / "a.png"])

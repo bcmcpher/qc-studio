@@ -55,9 +55,14 @@ def view_paths(bundle_dir: Path, bundle: EvidenceBundle) -> list[Path]:
     return [Path(bundle_dir) / view.path for view in bundle.views]
 
 
+def view_name(image: Path) -> str:
+    """An image's path as ``PACKAGE.md`` lists it (``views/<file>.png``)."""
+    return f"{image.parent.name}/{image.name}"
+
+
 def image_label(index: int, image: Path) -> str:
-    """The text placed before an attached image: its number and its path as ``PACKAGE.md`` lists it."""
-    return f"Image {index}: {image.parent.name}/{image.name}"
+    """The text placed before an attached image: its number and ``view_name``."""
+    return f"Image {index}: {view_name(image)}"
 
 
 def strip_section(markdown: str, heading: str) -> str:
@@ -124,13 +129,13 @@ def reply_schema() -> dict[str, Any]:
 
 
 def prompt_hash(prompt: str, images: Sequence[Path] = ()) -> str:
-    """SHA-256 of the prompt text and of each attached image's name and bytes.
+    """SHA-256 of the prompt text and of each attached image's ``view_name`` and bytes.
 
     A changed template, ``PACKAGE.md`` or view gives a new hash, so earlier feedback is stale.
     """
     digest = hashlib.sha256(prompt.encode("utf-8"))
     for image in images:
-        digest.update(b"\0" + image.name.encode("utf-8") + b"\0")
+        digest.update(b"\0" + view_name(image).encode("utf-8") + b"\0")
         digest.update(image.read_bytes())
     return digest.hexdigest()
 

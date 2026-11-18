@@ -18,12 +18,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional, Sequence
 
-if __package__ in (None, ""):
-    # Run as a script: make ``model_adapters`` importable from the sandbox folder.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Make ``model_adapters`` (sandbox/) and ``evidence_bundle`` (ui/) importable when run as a script.
+for _path in (Path(__file__).resolve().parents[1], Path(__file__).resolve().parents[2] / "ui"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 from model_adapters.base import BUNDLE_FILE, DataUseError, ModelAdapter, load_bundle  # noqa: E402
-from evidence_bundle.feedback import FEEDBACK_FILE, FeedbackResult, load_feedback, skipped_result, write_feedback  # noqa: E402
+from evidence_bundle.feedback import FEEDBACK_FILE, FeedbackResult, load_feedback, write_feedback  # noqa: E402
+from evidence_bundle.models import EvidenceBundle  # noqa: E402
 
 LOG = logging.getLogger("run_feedback")
 
@@ -46,38 +48,36 @@ def _existing(bundle_dir: Path) -> Optional[FeedbackResult]:
         return None
 
 
-def is_current(existing: Optional[FeedbackResult], adapter: ModelAdapter, prompt_hash: Optional[str]) -> bool:
-    """True when ``existing`` came from this adapter and model with the same request.
+def is_current(existing: Optional[FeedbackResult], adapter: ModelAdapter, bundle_dir: Path, bundle: EvidenceBundle) -> bool:
+    """True when ``existing`` is what this adapter would write now, so the bundle can be kept.
 
-    Error results are never current, so a rerun retries them.
+    It must come from the same adapter and model. For an unsupported bundle it must be the
+    skipped result. Otherwise it must be a schema-valid reply with the same settings and prompt
+    hash; an error, a truncated or invalid reply, or a changed setting is rerun.
     """
-    if existing is None or existing.status == "error":
+    if existing is None or (existing.adapter, existing.model_id) != (adapter.name, adapter.model_id):
         return False
-    same_model = (existing.adapter, existing.model_id) == (adapter.name, adapter.model_id)
-    return same_model and existing.prompt_hash == prompt_hash
+    if bundle.support == "unsupported":
+        return existing.status == "skipped_unsupported"
+    if existing.status != "ok" or not existing.schema_valid or existing.settings != adapter.settings:
+        return False
+    try:
+        prompt_hash = adapter.request(bundle_dir, bundle)[2]
+    except Exception:  # noqa: BLE001 - an unrenderable bundle is resent; send() records the error
+        return False
+    return existing.prompt_hash == prompt_hash
 
 
 def process(bundle_dir: Path, adapter: ModelAdapter, overwrite: bool = False) -> str:
     """Write ``feedback.json`` for one bundle; return what happened (a result status or ``kept``).
 
-    Raises only when ``bundle.json`` is unreadable, since no result can describe that bundle.
+    ``send`` decides what to do with the bundle, including skipping an unsupported one. Raises
+    only when ``bundle.json`` is unreadable, since no result can describe that bundle.
     """
     bundle = load_bundle(bundle_dir)
-    existing = None if overwrite else _existing(bundle_dir)
-    if bundle.support == "unsupported":
-        # Never sent; the panel reads the skipped result to say why there is no feedback.
-        if existing is not None and existing.status == "skipped_unsupported":
-            return "kept"
-        result = skipped_result(bundle, adapter=adapter.name, model_id=adapter.model_id)
-    else:
-        if existing is not None:
-            try:
-                prompt_hash = adapter.request(bundle_dir, bundle)[2]
-            except OSError:
-                prompt_hash = None  # a missing PACKAGE.md or view: send() records the error
-            if prompt_hash is not None and is_current(existing, adapter, prompt_hash):
-                return "kept"
-        result = adapter.send(bundle_dir)
+    if not overwrite and is_current(_existing(bundle_dir), adapter, bundle_dir, bundle):
+        return "kept"
+    result = adapter.send(bundle_dir)
     write_feedback(bundle_dir, result)
     return result.status
 

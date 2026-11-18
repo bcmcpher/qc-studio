@@ -131,16 +131,32 @@ As built (section 5):
   (env `CLAUDE_MODEL` / `OPENAI_MODEL`, as the sandbox `run_experiment.py`), `--base_url`,
   `--iqms_only`, `--acknowledge_data_use`, `--max_tokens`, `--overwrite`. `run(root, adapter)`
   holds the loop so tests pass a fake adapter.
-- 5.2: feedback is current when adapter name, model id and prompt hash all match. The hash is
-  computed without sending (`ModelAdapter.request`). An `error` result is never current, so a
-  rerun retries it. An unreadable `feedback.json` is replaced.
+- 5.2: feedback is current when adapter name, model id, settings and prompt hash all match
+  and the reply was schema-valid. The hash is computed without sending
+  (`ModelAdapter.request`). An `error` result or an invalid (for example truncated) reply is
+  never current, so a rerun retries it. An unreadable `feedback.json` is replaced.
 - 5.3: `send` already stores adapter errors. The loop also catches what `send` raises (an
   unreadable `bundle.json`): it logs it, writes nothing for that bundle and continues. The exit
   status is 1 only in that case; 2 for bad options, including image mode without the
   acknowledgement (checked before any request).
-- 5.4: an existing `skipped_unsupported` result is kept.
+- 5.4: `send` makes the skip decision, so the rule is in one place. An existing
+  `skipped_unsupported` result is kept only when it came from the same adapter and model.
 - One `feedback.json` per bundle: a run with another model or mode replaces the previous
   result. Keeping several runs side by side is left to add-feedback-evaluation.
 - 5.6: requirements pin `anthropic>=1` (`output_config`, no sampling parameters) and
   `openai>=1.40` (`response_format` `json_schema`). The README example serves
   LLaVA-OneVision with vLLM.
+
+Review fixes (end-of-change review 2026-11-18):
+
+- `write_feedback` creates the temporary file with `os.open(..., 0o666)`, so the kernel
+  applies the umask; the process umask is no longer changed, even for a moment.
+- `extract_json` tries each `{` in turn, so a stray brace in prose before the JSON is skipped.
+- `run_feedback.py` reruns invalid replies and changed settings, resends a bundle whose
+  prompt cannot be rendered (`send` records the error), and adds `sandbox/` and `ui/` to the
+  path itself.
+- The prompt hash covers each image's `views/<file>.png` name, the same text as its label.
+- Not changed: images read more than once on a rerun (cheap next to the model call), the small
+  base64 and endpoint repetition between the two adapters, and whether consistency should
+  require the bundle's flagged metrics in `flagged_metrics` (a spec question; the evaluation
+  measures it).
