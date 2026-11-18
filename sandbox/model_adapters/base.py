@@ -5,9 +5,11 @@ adapter renders the same prompt template around the bundle's ``PACKAGE.md``, has
 request, and validates the reply through ``ui/evidence_bundle/feedback.py``.
 """
 
+import copy
 import hashlib
 import sys
 from abc import ABC, abstractmethod
+from functools import cache
 from pathlib import Path
 from string import Template
 from typing import Any, Mapping, Optional, Sequence, Union
@@ -17,7 +19,7 @@ if str(_UI_DIR) not in sys.path:
     sys.path.insert(0, str(_UI_DIR))
 
 from evidence_bundle.constants import MAX_REASONS, MIN_REASONS  # noqa: E402
-from evidence_bundle.feedback import FeedbackResult, QCFeedback, error_result, reply_result  # noqa: E402
+from evidence_bundle.feedback import FeedbackResult, QCFeedback, error_result, reply_result, skipped_result  # noqa: E402
 from evidence_bundle.models import EvidenceBundle  # noqa: E402
 
 BUNDLE_FILE = "bundle.json"
@@ -26,8 +28,9 @@ PROMPT_TEMPLATE = Path(__file__).with_name("prompt.md")
 RATER_SECTION = "Rater QC"
 
 IMAGE_SECTION = (
-    'The views listed under "Views" are attached as images, in the order listed. Describe what '
-    "they show in `image_observations`; use them alongside the metrics, not instead of them."
+    'The views listed under "Views" are attached as images. Each image follows a label with its '
+    'path as listed under "Views". Describe what they show in `image_observations`; use them '
+    "alongside the metrics, not instead of them."
 )
 NO_IMAGE_SECTION = "No images are attached. Leave `image_observations` empty and do not cite image evidence."
 
@@ -46,6 +49,11 @@ def load_bundle(bundle_dir: Path) -> EvidenceBundle:
 def view_paths(bundle_dir: Path, bundle: EvidenceBundle) -> list[Path]:
     """The bundle's view images, in bundle order (core views first)."""
     return [Path(bundle_dir) / view.path for view in bundle.views]
+
+
+def image_label(index: int, image: Path) -> str:
+    """The text placed before an attached image: its number and its path as ``PACKAGE.md`` lists it."""
+    return f"Image {index}: {image.parent.name}/{image.name}"
 
 
 def strip_section(markdown: str, heading: str) -> str:
@@ -76,23 +84,39 @@ def render_prompt(bundle_dir: Path, images: bool, template: Path = PROMPT_TEMPLA
     )
 
 
+_DROPPED_KEYWORDS = {"minLength", "maxLength", "title", "default"}
+
+
+def _clean_schema(node: Any) -> Any:
+    """Drop ``_DROPPED_KEYWORDS`` from schema nodes; property names are kept whatever they are."""
+    if isinstance(node, list):
+        return [_clean_schema(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    cleaned = {}
+    for key, value in node.items():
+        if key in ("properties", "$defs"):
+            cleaned[key] = {name: _clean_schema(sub) for name, sub in value.items()}
+        elif key not in _DROPPED_KEYWORDS:
+            cleaned[key] = _clean_schema(value)
+    return cleaned
+
+
+@cache
+def _reply_schema() -> dict[str, Any]:
+    schema = _clean_schema(QCFeedback.model_json_schema())
+    schema["required"] = list(schema["properties"])
+    return schema
+
+
 def reply_schema() -> dict[str, Any]:
     """The ``QCFeedback`` JSON schema for a model's structured-output mode.
 
     Every property is required and length constraints are dropped, as strict structured output
-    expects; ``feedback.py`` still enforces the full model on the reply.
+    expects; ``feedback.py`` still enforces the full model on the reply. Built once; each call
+    returns a copy.
     """
-
-    def clean(node: Any) -> Any:
-        if isinstance(node, dict):
-            return {key: clean(value) for key, value in node.items() if key not in {"minLength", "maxLength", "title", "default"}}
-        if isinstance(node, list):
-            return [clean(item) for item in node]
-        return node
-
-    schema = clean(QCFeedback.model_json_schema())
-    schema["required"] = list(schema["properties"])
-    return schema
+    return copy.deepcopy(_reply_schema())
 
 
 def prompt_hash(prompt: str, images: Sequence[Path] = ()) -> str:
@@ -140,18 +164,25 @@ class ModelAdapter(ABC):
         """Send one request; return the reply text, or the parsed object for structured output."""
 
     def request(self, bundle_dir: Path, bundle: EvidenceBundle) -> tuple[str, list[Path], str]:
-        """The prompt, attached images and prompt hash for one request, without sending it."""
-        prompt = render_prompt(bundle_dir, self.images)
+        """The prompt, attached images and prompt hash for one request, without sending it.
+
+        A bundle without views gets the no-image instructions even in image mode, so the
+        prompt never says images are attached when none are.
+        """
         images = view_paths(bundle_dir, bundle) if self.images else []
+        prompt = render_prompt(bundle_dir, bool(images))
         return prompt, images, prompt_hash(prompt, images)
 
     def send(self, bundle_dir: Path) -> FeedbackResult:
         """Send one bundle.
 
-        An unreadable ``bundle.json`` raises, since no result can describe it. Any later failure
+        An unsupported bundle is never sent; it gets a ``skipped_unsupported`` result. An
+        unreadable ``bundle.json`` raises, since no result can describe it. Any later failure
         (missing ``PACKAGE.md`` or view, model or transport error) is recorded in the result.
         """
         bundle = load_bundle(bundle_dir)
+        if bundle.support == "unsupported":
+            return skipped_result(bundle, adapter=self.name, model_id=self.model_id)
         meta: dict[str, Any] = dict(adapter=self.name, model_id=self.model_id, settings=self.settings, endpoint=self.endpoint)
         try:
             prompt, images, meta["prompt_hash"] = self.request(bundle_dir, bundle)

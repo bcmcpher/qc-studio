@@ -19,8 +19,11 @@ from model_adapters.base import (  # noqa: E402
     NO_IMAGE_SECTION,
     DataUseError,
     ModelAdapter,
+    _clean_schema,
+    image_label,
     prompt_hash,
     render_prompt,
+    reply_schema,
 )
 from model_adapters.claude import DEFAULT_MODEL, ClaudeAdapter  # noqa: E402
 
@@ -228,14 +231,28 @@ def _claude(text: str = json.dumps(REPLY), stop_reason: str = "end_turn", catego
     return ClaudeAdapter(client=SimpleNamespace(messages=messages), **kwargs), messages
 
 
+def _fake_sdk(monkeypatch) -> dict[str, Any]:
+    """Install a fake ``anthropic`` module; return the keyword arguments its client receives."""
+    seen: dict[str, Any] = {}
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+    return seen
+
+
 class TestClaudeAdapter:
     def test_images_attached(self, bundle_dir):
         adapter, messages = _claude()
         result = adapter.send(bundle_dir)
         content = messages.requests[0]["messages"][0]["content"]
-        assert [block["type"] for block in content] == ["image", "image", "image", "text"]
-        assert content[0]["source"]["media_type"] == "image/png"
-        assert base64.standard_b64decode(content[0]["source"]["data"]) == b"png views/core_axial.png"
+        assert [block["type"] for block in content] == ["text", "image"] * 3 + ["text"]
+        assert content[0]["text"] == "Image 1: views/core_axial.png"
+        assert content[4]["text"] == "Image 3: views/noise_axial.png"
+        assert content[1]["source"]["media_type"] == "image/png"
+        assert base64.standard_b64decode(content[1]["source"]["data"]) == b"png views/core_axial.png"
         assert result.status == "ok" and result.schema_valid
 
     def test_iqms_only_sends_no_images(self, bundle_dir):
@@ -270,18 +287,19 @@ class TestClaudeAdapter:
         result = _claude(base_url="https://proxy.example.org")[0].send(bundle_dir)
         assert result.endpoint == "https://proxy.example.org"
 
-    def test_base_url_from_environment(self, bundle_dir, monkeypatch):
+    def test_base_url_from_environment(self, monkeypatch):
+        seen = _fake_sdk(monkeypatch)
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://env.example.org")
-        assert _claude()[0].send(bundle_dir).endpoint == "https://env.example.org"
+        adapter = ClaudeAdapter(acknowledge_data_use=True)
+        assert adapter.endpoint == "https://env.example.org"
+        assert seen == {"base_url": "https://env.example.org"}
+
+    def test_injected_client_ignores_environment(self, bundle_dir, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://env.example.org")
+        assert _claude()[0].send(bundle_dir).endpoint is None
 
     def test_base_url_passed_to_client(self, monkeypatch):
-        seen = {}
-
-        class FakeAnthropic:
-            def __init__(self, **kwargs):
-                seen.update(kwargs)
-
-        monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+        seen = _fake_sdk(monkeypatch)
         ClaudeAdapter(base_url="https://proxy.example.org", acknowledge_data_use=True)
         assert seen == {"base_url": "https://proxy.example.org"}
 
@@ -299,3 +317,42 @@ class TestClaudeAdapter:
         result = _claude(text='{"decision": "pass", "conf', stop_reason="max_tokens")[0].send(bundle_dir)
         assert result.status == "ok" and not result.schema_valid
         assert result.raw_reply == '{"decision": "pass", "conf'
+
+
+def _rewrite_bundle(bundle_dir: Path, **changes) -> None:
+    bundle = EvidenceBundle.model_validate_json((bundle_dir / "bundle.json").read_text(encoding="utf-8"))
+    (bundle_dir / "bundle.json").write_text(bundle.model_copy(update=changes).model_dump_json(), encoding="utf-8")
+
+
+class TestReviewFixes:
+    def test_no_views_gets_no_image_section(self, bundle_dir):
+        _rewrite_bundle(bundle_dir, views=[])
+        adapter = FakeAdapter()
+        adapter.send(bundle_dir)
+        prompt, images = adapter.calls[0]
+        assert images == [] and NO_IMAGE_SECTION in prompt and "attached as images" not in prompt
+
+    def test_unsupported_bundle_not_sent(self, bundle_dir):
+        metric = MetricEvidence(
+            name="cjv",
+            value=0.5,
+            display_name="CJV",
+            category="noise_and_tissue_contrast",
+            direction_of_concern="context_dependent",
+            evidence_strength="none",
+        )
+        _rewrite_bundle(bundle_dir, suffix="PDw", support="unsupported", context_suffix=None, reference=None, metrics=[metric])
+        adapter = FakeAdapter()
+        result = adapter.send(bundle_dir)
+        assert result.status == "skipped_unsupported" and adapter.calls == []
+
+    def test_schema_keeps_property_names(self):
+        schema = {"type": "object", "title": "X", "properties": {"title": {"type": "string", "minLength": 1}, "default": {"type": "string"}}}
+        assert _clean_schema(schema) == {"type": "object", "properties": {"title": {"type": "string"}, "default": {"type": "string"}}}
+
+    def test_reply_schema_is_a_copy(self):
+        reply_schema()["required"].clear()
+        assert reply_schema()["required"]
+
+    def test_image_label(self, bundle_dir):
+        assert image_label(2, bundle_dir / "views" / "core_coronal.png") == "Image 2: views/core_coronal.png"

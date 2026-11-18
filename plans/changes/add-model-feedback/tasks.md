@@ -77,6 +77,20 @@ As built (section 3):
   wired in section 5 (CLI).
 - 3.4 is inherited from the base constructor; a test covers it for this adapter.
 
+Review fixes (mid-change review 2026-11-18):
+
+- `feedback.py`: flagged metrics must appear in a reason as whole words (`snr` is not found in
+  `tsnr` or `snr_wm`); the whole reply is parsed as JSON before any fence search;
+  `feedback.json` gets the umask-based mode, not `mkstemp`'s 0600.
+- `ModelAdapter.send` returns `skipped_unsupported` for an unsupported bundle itself, so a
+  direct call never reaches the model (task 5.4 can rely on it).
+- A bundle with no views gets the no-image prompt section even in image mode.
+- Each attached image follows a text label `Image N: views/<file>.png` that matches its
+  `PACKAGE.md` "Views" entry (`image_label`); the prompt says so.
+- With an injected client, the recorded endpoint is only the `base_url` the caller passes;
+  `ANTHROPIC_BASE_URL` is read only when the adapter builds its own client.
+- `reply_schema()` keeps property names whatever they are, is built once and returns a copy.
+
 ## 4. OpenAI-compatible adapter — `sandbox/model_adapters/openai_compat.py`
 
 - [ ] 4.1 Lazy `openai` import; required `base_url` (`--base_url`, `OPENAI_BASE_URL`) and model id; optional `OPENAI_API_KEY`

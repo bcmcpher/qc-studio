@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from .base import ModelAdapter, Reply, reply_schema
+from .base import ModelAdapter, Reply, image_label, reply_schema
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_MAX_TOKENS = 16000
@@ -43,9 +43,15 @@ class ClaudeAdapter(ModelAdapter):
         client: Any = None,
     ):
         super().__init__(model_id, images=images, acknowledge_data_use=acknowledge_data_use)
-        self.base_url = base_url or os.environ.get(BASE_URL_ENV) or None
         self.max_tokens = max_tokens
-        self.client = client if client is not None else self._make_client()
+        if client is not None:
+            # An injected client was built by the caller; record only the endpoint the caller
+            # declares, since the environment may not match what that client calls.
+            self.base_url = base_url
+            self.client = client
+        else:
+            self.base_url = base_url or os.environ.get(BASE_URL_ENV) or None
+            self.client = self._make_client()
 
     def _make_client(self) -> Any:
         try:
@@ -64,7 +70,10 @@ class ClaudeAdapter(ModelAdapter):
         return self.base_url
 
     def complete(self, prompt: str, images: Sequence[Path]) -> Reply:
-        content = [image_block(path) for path in images]
+        content: list[dict[str, Any]] = []
+        for index, path in enumerate(images, start=1):
+            content.append({"type": "text", "text": image_label(index, path)})
+            content.append(image_block(path))
         content.append({"type": "text", "text": prompt})
         response = self.client.messages.create(
             model=self.model_id,
