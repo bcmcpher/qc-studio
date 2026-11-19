@@ -21,6 +21,7 @@ Usage (from the repo root)::
 
 import argparse
 import csv
+import hashlib
 import json
 import logging
 import re
@@ -41,7 +42,7 @@ for _path in (Path(__file__).resolve().parents[1], Path(__file__).resolve().pare
 from model_adapters.base import BUNDLE_FILE, PACKAGE_FILE, PROMPT_TEMPLATE, DataUseError, ModelAdapter, load_bundle  # noqa: E402
 from model_adapters.run_feedback import add_adapter_args, find_bundles, make_adapter, resolve_model_id  # noqa: E402
 from evidence_bundle.export import PACKAGE_TEMPLATE, package_context, render_markdown_template  # noqa: E402
-from evidence_bundle.feedback import FEEDBACK_FILE, FeedbackResult, load_feedback, write_feedback  # noqa: E402
+from evidence_bundle.feedback import FEEDBACK_FILE, FeedbackResult, error_result, load_feedback, write_feedback  # noqa: E402
 from evidence_bundle.models import EvidenceBundle, ViewRef  # noqa: E402
 from evidence_bundle.view_rules import FLAG_RULES  # noqa: E402
 
@@ -92,7 +93,7 @@ ROW_FIELDS: tuple[str, ...] = (
     "view_set",
     "reason",
     "n_views",
-    "control",
+    "control_scan",
     "control_rules",
     "targeted_rules",
     "prompt_hash",
@@ -114,8 +115,13 @@ ROW_FIELDS: tuple[str, ...] = (
 
 
 def model_key(adapter: str, model_id: Optional[str]) -> str:
-    """Folder name for one adapter and model: ``<adapter>__<model id>``, filesystem-safe."""
-    return f"{adapter}__{re.sub(r'[^A-Za-z0-9._-]+', '-', model_id or 'default')}"
+    """Folder name for one adapter and model: ``<adapter>__<model id>-<hash>``, filesystem-safe.
+
+    The hash of the raw model id keeps ids that differ only in replaced characters apart.
+    """
+    raw = model_id or "default"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    return f"{adapter}__{re.sub(r'[^A-Za-z0-9._-]+', '-', raw)}-{digest}"
 
 
 def variant_views(views: Sequence[ViewRef], view_set: ViewSet) -> list[ViewRef]:
@@ -126,9 +132,21 @@ def variant_views(views: Sequence[ViewRef], view_set: ViewSet) -> list[ViewRef]:
     return list(views)
 
 
+def staged_views(bundle: EvidenceBundle, variant: Variant) -> list[tuple[str, ViewRef]]:
+    """The variant's views as (source path, view renamed ``views/view_NN.png``).
+
+    Export names a view after its kind and rule (``targeted_noise``); the neutral name keeps
+    that out of the prompt, which lists each image's path.
+    """
+    return [
+        (view.path, view.model_copy(update={"path": f"views/view_{index:02d}.png"}))
+        for index, view in enumerate(variant_views(bundle.views, variant.view_set), start=1)
+    ]
+
+
 def variant_bundle(bundle: EvidenceBundle, variant: Variant) -> EvidenceBundle:
-    """The bundle with only the variant's views."""
-    return bundle.model_copy(update={"views": variant_views(bundle.views, variant.view_set)})
+    """The bundle with only the variant's views, under neutral names."""
+    return bundle.model_copy(update={"views": [view for _, view in staged_views(bundle, variant)]})
 
 
 def views_text(views: Sequence[ViewRef], reason: ReasonMode) -> str:
@@ -161,33 +179,36 @@ def _unique(items: Sequence[Optional[str]]) -> list[str]:
     return list(dict.fromkeys(item for item in items if item))
 
 
-def cell_info(bundle: EvidenceBundle, variant: Variant, source_bundle: str) -> dict[str, Any]:
-    """What ``cell.json`` records: the variant and the source bundle's targeted and control rules."""
+def cell_info(bundle: EvidenceBundle, staged: EvidenceBundle, variant: Variant, source_bundle: str) -> dict[str, Any]:
+    """What ``cell.json`` records: the variant, whether the scan is a control scan, and the
+    targeted and control rules of the views this variant shows (none for ``iqms`` and ``core``)."""
     return {
         "variant": variant.name,
         "view_set": variant.view_set,
         "reason": variant.reason,
         "source_bundle": source_bundle,
-        "targeted_rules": _unique([v.rule for v in bundle.views if v.kind == "targeted"]),
-        "control_rules": _unique([v.rule for v in bundle.views if v.control]),
+        "control_scan": any(v.control for v in bundle.views),
+        "targeted_rules": _unique([v.rule for v in staged.views if v.kind == "targeted"]),
+        "control_rules": _unique([v.rule for v in staged.views if v.control]),
     }
 
 
 def stage(source_dir: Path, bundle: EvidenceBundle, variant: Variant, cell_dir: Path, source_bundle: str) -> EvidenceBundle:
-    """Write the variant's ``bundle.json``, ``PACKAGE.md``, ``views/`` and ``cell.json`` to ``cell_dir``.
+    """Write the variant's ``cell.json``, ``bundle.json``, ``PACKAGE.md`` and ``views/`` to ``cell_dir``.
 
-    An earlier ``views/`` folder is replaced; ``feedback.json`` is left for the caller.
+    The metadata is written first, so a view that fails to copy still leaves a cell the
+    collector finds. An earlier ``views/`` folder is replaced; ``feedback.json`` is left for the caller.
     """
-    staged = variant_bundle(bundle, variant)
+    pairs = staged_views(bundle, variant)
+    staged = bundle.model_copy(update={"views": [view for _, view in pairs]})
     cell_dir.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(cell_dir / "views", ignore_errors=True)
-    for view in staged.views:
-        target = cell_dir / view.path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_dir / view.path, target)
+    (cell_dir / CELL_FILE).write_text(json.dumps(cell_info(bundle, staged, variant, source_bundle), indent=2), encoding="utf-8")
     (cell_dir / BUNDLE_FILE).write_text(staged.model_dump_json(indent=2), encoding="utf-8")
     (cell_dir / PACKAGE_FILE).write_text(package_text(staged, variant.reason), encoding="utf-8")
-    (cell_dir / CELL_FILE).write_text(json.dumps(cell_info(bundle, variant, source_bundle), indent=2), encoding="utf-8")
+    shutil.rmtree(cell_dir / "views", ignore_errors=True)
+    (cell_dir / "views").mkdir()
+    for source, view in pairs:
+        shutil.copyfile(source_dir / source, cell_dir / view.path)
     return staged
 
 
@@ -216,11 +237,12 @@ def image_tokens(path: Path) -> int:
 
 def estimate_tokens(source_dir: Path, bundle: EvidenceBundle, variant: Variant, images: bool) -> int:
     """Rough input tokens for one request: prompt characters / 4 plus each attached image."""
-    staged = variant_bundle(bundle, variant)
+    pairs = staged_views(bundle, variant)
+    staged = bundle.model_copy(update={"views": [view for _, view in pairs]})
     text = len(PROMPT_TEMPLATE.read_text(encoding="utf-8")) + len(package_text(staged, variant.reason))
     tokens = text // TEXT_CHARS_PER_TOKEN
     if images:
-        tokens += sum(image_tokens(source_dir / view.path) for view in staged.views)
+        tokens += sum(image_tokens(source_dir / source) for source, _ in pairs)
     return tokens
 
 
@@ -248,10 +270,34 @@ def variants_for(names: Optional[Sequence[str]], images: bool) -> list[Variant]:
     return selected
 
 
+def is_done(cell_dir: Path, bundle: EvidenceBundle) -> bool:
+    """True when the cell already holds a final result: a schema-valid reply, or the skip of an
+    unsupported bundle. An error, an invalid reply or an unreadable file is resent."""
+    if not (cell_dir / FEEDBACK_FILE).exists():
+        return False
+    try:
+        result = load_feedback(cell_dir)
+    except (OSError, ValueError):
+        return False
+    if bundle.support == "unsupported":
+        return result.status == "skipped_unsupported"
+    return result.status == "ok" and result.schema_valid
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    path, folder = path.resolve(), folder.resolve()
+    return path == folder or folder in path.parents
+
+
 def plan(root: Path, out_dir: Path, key: str, variants: Sequence[Variant], overwrite: bool = False) -> tuple[list[Job], list[Path]]:
-    """Every (bundle, variant) job under ``root``, and the bundle folders whose ``bundle.json`` is unreadable."""
+    """Every (bundle, variant) job under ``root``, and the bundle folders whose ``bundle.json`` is unreadable.
+
+    Bundles under ``out_dir`` are staged cells, not sources, and are skipped.
+    """
     jobs, unreadable = [], []
     for source_dir in find_bundles(root):
+        if _inside(source_dir, out_dir):
+            continue
         try:
             bundle = load_bundle(source_dir)
         except Exception as err:  # noqa: BLE001 - one bad bundle must not stop the run
@@ -261,7 +307,7 @@ def plan(root: Path, out_dir: Path, key: str, variants: Sequence[Variant], overw
         source_bundle = source_dir.relative_to(root).as_posix()
         for variant in variants:
             cell_dir = out_dir / key / variant.name / source_bundle
-            if not overwrite and (cell_dir / FEEDBACK_FILE).exists():
+            if not overwrite and is_done(cell_dir, bundle):
                 action = "kept"
             elif bundle.support == "unsupported":
                 action = "skip_unsupported"
@@ -286,9 +332,25 @@ def dry_run_summary(jobs: Sequence[Job], images: bool) -> dict[str, int]:
 
 
 def run_job(job: Job, adapter: ModelAdapter) -> str:
-    """Stage one cell folder and write its ``feedback.json``; return the result status."""
-    stage(job.source_dir, job.bundle, job.variant, job.cell_dir, job.source_bundle)
-    result = adapter.send(job.cell_dir)
+    """Stage one cell folder and write its ``feedback.json``; return the result status.
+
+    An earlier ``feedback.json`` is removed first, so a failed restage never leaves an old result
+    beside new staging. A view that fails to copy is stored as an ``error`` result.
+    """
+    (job.cell_dir / FEEDBACK_FILE).unlink(missing_ok=True)
+    try:
+        stage(job.source_dir, job.bundle, job.variant, job.cell_dir, job.source_bundle)
+    except OSError as err:
+        result = error_result(
+            job.bundle,
+            f"staging failed: {type(err).__name__}: {err}",
+            adapter=adapter.name,
+            model_id=adapter.model_id,
+            settings=adapter.settings,
+            endpoint=adapter.endpoint,
+        )
+    else:
+        result = adapter.send(job.cell_dir)
     write_feedback(job.cell_dir, result)
     return result.status
 
@@ -323,10 +385,17 @@ def load_labels(path: Path) -> dict[str, tuple[str, str]]:
         if missing:
             raise ValueError(f"{path}: missing columns {sorted(missing)}")
         for line, row in enumerate(reader, start=2):
-            label = (row["label"] or "").strip()
+            name = (row.get("bids_name") or "").strip()
+            label = (row.get("label") or "").strip()
+            if not name and not label:
+                continue  # a blank line or a line of tabs
+            if not name:
+                raise ValueError(f"{path}:{line}: empty bids_name")
             if label not in LABELS:
                 raise ValueError(f"{path}:{line}: label '{label}' is not one of {LABELS}")
-            labels[row["bids_name"].strip()] = (label, (row.get("original_label") or "").strip())
+            if name in labels:
+                raise ValueError(f"{path}:{line}: duplicate bids_name '{name}'")
+            labels[name] = (label, (row.get("original_label") or "").strip())
     return labels
 
 
@@ -374,7 +443,7 @@ def collect_row(cell_dir: Path, out_dir: Path, labels: Mapping[str, tuple[str, s
         "view_set": info["view_set"],
         "reason": info["reason"],
         "n_views": str(len(bundle.views)),
-        "control": _flag(bool(control_rules)),
+        "control_scan": _flag(bool(info.get("control_scan"))),
         "control_rules": ",".join(control_rules),
         "targeted_rules": ",".join(info.get("targeted_rules", [])),
         "prompt_hash": (result.prompt_hash or "") if result else "",

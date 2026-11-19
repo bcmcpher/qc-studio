@@ -155,6 +155,11 @@ class TestVariants:
         assert "core" not in text.replace("core_axial.png", "").replace("core_sagittal.png", "")
         assert "![axial view](views/targeted_noise.png)" in text
 
+    def test_staged_views_get_neutral_names(self):
+        staged = run_eval.variant_bundle(_bundle("sub-01", flagged=True), VARIANT["core_targeted_hidden"])
+        assert [v.path for v in staged.views] == ["views/view_01.png", "views/view_02.png", "views/view_03.png"]
+        assert staged.views[2].rule == "noise"  # kept in bundle.json for the evaluation, never in the prompt
+
     @pytest.mark.parametrize("reason", ["stated", "hidden"])
     def test_control_never_named(self, reason):
         text = run_eval.package_text(_bundle("sub-02", flagged=False), reason)
@@ -165,8 +170,12 @@ class TestVariants:
         assert "`snr_wm`" in text and "## Rater QC" in text
 
     def test_model_key_is_filesystem_safe(self):
-        assert run_eval.model_key("openai_compat", "org/llava 7b:q4") == "openai_compat__org-llava-7b-q4"
-        assert run_eval.model_key("fake", None) == "fake__default"
+        key = run_eval.model_key("openai_compat", "org/llava 7b:q4")
+        assert key.startswith("openai_compat__org-llava-7b-q4-") and "/" not in key
+        assert run_eval.model_key("fake", None).startswith("fake__default-")
+
+    def test_model_key_keeps_similar_ids_apart(self):
+        assert run_eval.model_key("openai_compat", "org/model:v1") != run_eval.model_key("openai_compat", "org-model-v1")
 
     def test_no_images_keeps_only_iqms(self):
         assert [v.name for v in run_eval.variants_for(None, images=False)] == ["iqms"]
@@ -192,6 +201,46 @@ class TestRun:
         sent = sorted(len(images) for _, images in adapter.calls)
         assert sent == [0, 0, 2, 2, 3, 3]
         assert all("No images are attached" in prompt for prompt, images in adapter.calls if not images)
+
+    def test_prompt_never_names_kind_rule_or_control(self, bundle_root, tmp_path):
+        adapter = FakeAdapter()
+        _run(bundle_root, tmp_path / "out", adapter, variants=[VARIANT["core_targeted_hidden"]])
+        for prompt, images in adapter.calls:
+            views = prompt.split("## Views", 1)[1]
+            for word in ("targeted", "core", "noise", "control"):
+                assert word not in views.lower()
+            assert [image.name for image in images] == ["view_01.png", "view_02.png", "view_03.png"]
+
+    def test_failed_cell_is_resent(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        failing = FakeAdapter()
+        failing.complete = lambda prompt, images: (_ for _ in ()).throw(TimeoutError("timed out"))
+        counts, _ = _run(bundle_root, out, failing, variants=[VARIANT["core"]])
+        assert counts == {"error": 2}
+        again = FakeAdapter()
+        counts, _ = _run(bundle_root, out, again, variants=[VARIANT["core"]])
+        assert counts == {"ok": 2} and len(again.calls) == 2
+
+    def test_out_dir_inside_bundle_root_is_not_a_source(self, bundle_root):
+        out = bundle_root / "eval"
+        _run(bundle_root, out, FakeAdapter())
+        jobs, _ = run_eval.plan(bundle_root, out, "fake__x", VARIANTS)
+        assert len(jobs) == 8 and all(not run_eval._inside(job.source_dir, out) for job in jobs)
+
+    def test_missing_view_gives_error_row(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        (bundle_root / "sub-01" / "anat" / "views" / "targeted_noise.png").unlink()
+        counts, _ = _run(bundle_root, out, FakeAdapter(), variants=[VARIANT["core_targeted_stated"]])
+        assert counts == {"ok": 1, "error": 1}
+        row = next(r for r in run_eval.collect(out) if r["participant_id"] == "sub-01")
+        assert row["status"] == "error" and "staging failed" in row["error"]
+
+    def test_failed_restage_drops_old_result(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        _, key = _run(bundle_root, out, FakeAdapter(), variants=[VARIANT["core_targeted_stated"]])
+        (bundle_root / "sub-01" / "anat" / "views" / "targeted_noise.png").unlink()
+        _run(bundle_root, out, FakeAdapter(), variants=[VARIANT["core_targeted_stated"]], overwrite=True)
+        assert load_feedback(out / key / "core_targeted_stated" / "sub-01" / "anat").status == "error"
 
     def test_variants_have_distinct_prompt_hashes(self, bundle_root, tmp_path):
         out = tmp_path / "out"
@@ -278,17 +327,20 @@ class TestCollect:
         assert (row["adapter"], row["model_id"], row["view_set"], row["reason"]) == ("fake", "fake-1", "core_targeted", "stated")
         assert row["prompt_hash"] and row["status"] == "ok" and row["schema_valid"] == "1"
         assert row["consistency_valid"] == "1" and row["decision"] == "fail" and row["n_views"] == "3"
-        assert row["control"] == "0" and row["control_confirmed"] == ""
+        assert row["control_scan"] == "0" and row["control_confirmed"] == ""
 
     def test_control_scan_false_confirmation(self, bundle_root, tmp_path):
         out = tmp_path / "out"
         _run(bundle_root, out, FakeAdapter())
-        rows = [r for r in run_eval.collect(out) if r["participant_id"] == "sub-02"]
-        assert {r["control"] for r in rows} == {"1"}
-        assert {r["control_rules"] for r in rows} == {"noise"}
-        assert {r["control_confirmed"] for r in rows} == {"1"}
+        rows = {r["variant"]: r for r in run_eval.collect(out) if r["participant_id"] == "sub-02"}
+        assert {r["control_scan"] for r in rows.values()} == {"1"}
+        for variant in ("core_targeted_stated", "core_targeted_hidden"):
+            assert (rows[variant]["control_rules"], rows[variant]["control_confirmed"]) == ("noise", "1")
+        # Variants without the control view cannot confirm it.
+        for variant in ("iqms", "core"):
+            assert (rows[variant]["control_rules"], rows[variant]["control_confirmed"]) == ("", "")
         # The clean scan has no flag, so the model's snr_wm flag breaks consistency.
-        assert {r["consistency_valid"] for r in rows} == {"0"}
+        assert {r["consistency_valid"] for r in rows.values()} == {"0"}
 
     def test_control_confirmed_needs_rule_metric(self):
         assert run_eval.control_confirmed(["cjv"], ["noise"]) is False
@@ -303,6 +355,17 @@ class TestCollect:
         rows = {r["participant_id"]: r for r in run_eval.collect(out, run_eval.load_labels(labels_path))}
         assert (rows["sub-01"]["label"], rows["sub-01"]["original_label"], rows["sub-01"]["agreement"]) == ("fail", "exclude", "1")
         assert (rows["sub-02"]["label"], rows["sub-02"]["agreement"]) == ("pass", "0")
+
+    def test_labels_skip_blank_and_reject_duplicates(self, tmp_path):
+        path = tmp_path / "labels.tsv"
+        path.write_text("bids_name\tlabel\nsub-01_ses-01_T1w\tpass\n\t\n\n")
+        assert run_eval.load_labels(path) == {"sub-01_ses-01_T1w": ("pass", "")}
+        path.write_text("bids_name\tlabel\nsub-01_ses-01_T1w\tpass\nsub-01_ses-01_T1w\tfail\n")
+        with pytest.raises(ValueError, match="duplicate"):
+            run_eval.load_labels(path)
+        path.write_text("bids_name\tlabel\n\tpass\n")
+        with pytest.raises(ValueError, match="empty bids_name"):
+            run_eval.load_labels(path)
 
     def test_bad_label_rejected(self, tmp_path):
         path = tmp_path / "labels.tsv"
