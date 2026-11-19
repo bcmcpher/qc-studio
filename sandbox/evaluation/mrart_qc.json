@@ -1,0 +1,17 @@
+{
+  "anat_standard": {
+    "display_name": "MR-ART T1w, standard",
+    "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_acq-standard_T1w.nii.gz",
+    "iqm_path": ["derivatives/mriqc/group_T1w.tsv"]
+  },
+  "anat_headmotion1": {
+    "display_name": "MR-ART T1w, head motion 1",
+    "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_acq-headmotion1_T1w.nii.gz",
+    "iqm_path": ["derivatives/mriqc/group_T1w.tsv"]
+  },
+  "anat_headmotion2": {
+    "display_name": "MR-ART T1w, head motion 2",
+    "base_mri_image_path": "bids/[[NIPOPPY_BIDS_PARTICIPANT_ID]]/anat/[[NIPOPPY_BIDS_PARTICIPANT_ID]]_acq-headmotion2_T1w.nii.gz",
+    "iqm_path": ["derivatives/mriqc/group_T1w.tsv"]
+  }
+}

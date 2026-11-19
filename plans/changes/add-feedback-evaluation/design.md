@@ -61,6 +61,11 @@ braindr ratings for HBN. Labels are per scan (accept / doubtful / exclude, or a 
   only on scans with no flagged metric and such a flag also fails the consistency check.
 - **Final results.** A reply is final whether or not it parses; only errors are resent, so
   reruns do not inflate schema validity.
+- **Candidate dataset: MR-ART** (user, 2026-11-19; maintainers to confirm). OpenNeuro
+  ds004173, CC0, 436 T1w scans with one neuroradiologist score each and MRIQC IQMs. Each
+  acquisition is a QC task in `sandbox/evaluation/mrart_qc.json`; views come from the raw T1w.
+  Its project distribution is two-thirds motion scans, so project flags and targeted views are
+  rare; the MRIQC reference would help once `REFERENCE_DATA_URL` exists.
 - **Order.** Section 2 (runner and synthetic tests) comes before section 1, because the dataset
   waits on the maintainers.
 

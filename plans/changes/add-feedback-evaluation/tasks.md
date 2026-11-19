@@ -1,9 +1,37 @@
 ## 1. Labelled data — `sandbox/evaluation/download.py`
 
 - [ ] 1.1 Choose the dataset with the maintainers; record licence and access terms in `sandbox/evaluation/README.md`
-- [ ] 1.2 Write the download script to `--data_dir` outside the repo; fetch IQMs, images needed for views, and labels
-- [ ] 1.3 Write the label-mapping table to `pass` / `fail` / `uncertain`
+- [x] 1.2 Write the download script to `--data_dir` outside the repo; fetch IQMs, images needed for views, and labels
+- [x] 1.3 Write the label-mapping table to `pass` / `fail` / `uncertain`
 - [ ] 1.4 Build bundles for a stratified, seeded sample with the export CLI; include control-mode scans
+
+As built (section 1, 2026-11-19):
+
+- 1.1: MR-ART (OpenNeuro ds004173, CC0) is the candidate the user named; licence, citation,
+  size and score distribution are in `sandbox/evaluation/README.md`. Left open until the
+  maintainers confirm.
+- 1.2: `download.py` lists OpenNeuro's public S3 bucket and fetches metadata (scores, MRIQC
+  0.16.1 `group_T1w.tsv`, participants) by default, and T1w images and sidecars for
+  `--subjects` or a `--sample` TSV. It lays files out for the export (`bids/`,
+  `derivatives/mriqc/`), downloads through a `.part` file checked against the listed size,
+  skips files already present, writes `download.json`, and refuses a `--data_dir` inside the
+  repository. Standard library only.
+- 1.3: `labels.py` maps score 1 / 2 / 3 to `pass` / `uncertain` / `fail` and keeps the score as
+  `original_label`. MR-ART has one rater, so no rater-label file.
+- 1.4 (partial): `sample.py` draws `--n_per_stratum` scans per label × `acq` stratum with a
+  seed, marks a `--control_fraction` of sampled `pass` scans as controls, and writes
+  `sample.tsv` (also the `--labels` input of `run_eval.py`) and `sample.json` (seed, options,
+  labels hash, per-stratum counts). `build.py` runs the export once per acquisition, each a QC
+  task in `sandbox/evaluation/mrart_qc.json`, since the export writes one bundle per
+  participant, session and task. MR-ART has no preprocessed images, so views come from the raw
+  T1w. Open: the export CLI has no control-mode option, so control scans get no control views.
+- Live check (2 participants, data in `/tmp`): metadata and 6 images fetched; 3 bundles with
+  core views; `run_eval --dry_run` estimated about 2,700 input tokens per request; a fake
+  adapter run went through collect and report. The MRIQC reference was unavailable
+  (`REFERENCE_DATA_URL` unset) and a score-3 scan had no project flag; see README "Known limits".
+- Tests: `ui/tests/test_feedback_evaluation_data.py` (23), including a smoke test that exports
+  the repository's `sample_data/` T1w scans (IQMs only; no raw images there), runs every
+  variant with a fake adapter, and writes the report.
 
 ## 2. Runner — `sandbox/evaluation/run_eval.py`
 
