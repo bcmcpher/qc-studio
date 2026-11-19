@@ -98,25 +98,34 @@ def run(root: Path, adapter: ModelAdapter, overwrite: bool = False) -> Counter:
     return counts
 
 
+def resolve_model_id(args: argparse.Namespace) -> Optional[str]:
+    """The model id the arguments select: ``--model_id``, then the adapter's env variable, then the Claude default."""
+    model_id = args.model_id or os.environ.get(MODEL_ENV[args.adapter])
+    if model_id is None and args.adapter == "claude":
+        from model_adapters.claude import DEFAULT_MODEL
+
+        return DEFAULT_MODEL
+    return model_id
+
+
 def make_adapter(args: argparse.Namespace) -> ModelAdapter:
     """Build the adapter the arguments name. Raises ``DataUseError`` or ``ValueError`` on bad options."""
-    model_id = args.model_id or os.environ.get(MODEL_ENV[args.adapter])
+    model_id = resolve_model_id(args)
     common = dict(images=not args.iqms_only, acknowledge_data_use=args.acknowledge_data_use, base_url=args.base_url)
     if args.max_tokens is not None:
         common["max_tokens"] = args.max_tokens
     if args.adapter == "claude":
-        from model_adapters.claude import DEFAULT_MODEL, ClaudeAdapter
+        from model_adapters.claude import ClaudeAdapter
 
-        return ClaudeAdapter(model_id or DEFAULT_MODEL, **common)
+        return ClaudeAdapter(model_id, **common)
     from model_adapters.openai_compat import OpenAICompatAdapter
 
     return OpenAICompatAdapter(model_id, **common)
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Write feedback.json for every evidence bundle under a folder.")
-    parser.add_argument("bundle_root", type=Path, help="folder searched recursively for bundle.json files")
-    parser.add_argument("--adapter", choices=ADAPTERS, required=True)
+def add_adapter_args(parser: argparse.ArgumentParser, required: bool = True) -> None:
+    """Add the options ``make_adapter`` reads."""
+    parser.add_argument("--adapter", choices=ADAPTERS, required=required)
     parser.add_argument("--model_id", help="model id; default from CLAUDE_MODEL / OPENAI_MODEL, or the Claude default")
     parser.add_argument("--base_url", help="endpoint URL; default from ANTHROPIC_BASE_URL / OPENAI_BASE_URL")
     parser.add_argument("--iqms_only", action="store_true", help="send no images, only the metrics text")
@@ -126,6 +135,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="confirm that sending MRI views to this endpoint is allowed by your data-use agreement",
     )
     parser.add_argument("--max_tokens", type=int, help="reply token limit; default per adapter")
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Write feedback.json for every evidence bundle under a folder.")
+    parser.add_argument("bundle_root", type=Path, help="folder searched recursively for bundle.json files")
+    add_adapter_args(parser)
     parser.add_argument("--overwrite", action="store_true", help="rerun bundles that already have current feedback")
     return parser.parse_args(argv)
 
