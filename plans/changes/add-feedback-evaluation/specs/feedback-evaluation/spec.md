@@ -48,6 +48,11 @@ fields SHALL stay available to the analysis.
   sent in any cell
 - **THEN** none of those values appear in the prompt or in an attached image's name
 
+#### Scenario: No distribution size
+
+- **WHEN** the package describes the project or reference distribution
+- **THEN** it says only whether the distribution was used, without its size, filters or note
+
 #### Scenario: Identifiers kept for analysis
 
 - **WHEN** the results TSV is written
@@ -62,6 +67,12 @@ SHALL report the false-confirmation rate on them.
 
 - **WHEN** the model flags the metric family of a control scan's targeted view
 - **THEN** the scan counts as a false confirmation
+
+#### Scenario: Non-pass on a control scan
+
+- **WHEN** the model returns `fail` or `uncertain` for a control scan
+- **THEN** the row counts as a control non-pass, reported for every variant so the variants
+  without the control view give a baseline
 
 ### Requirement: Evaluation report
 

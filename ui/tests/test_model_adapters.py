@@ -593,6 +593,13 @@ class TestRunFeedback:
         adapter = run_feedback.make_adapter(args)
         assert adapter.model_id == "claude-opus-5-5" and adapter.settings["max_tokens"] == 800
 
+    def test_cli_empty_model_variable_uses_default(self, monkeypatch):
+        from model_adapters.claude import DEFAULT_MODEL
+
+        monkeypatch.setenv("CLAUDE_MODEL", "")
+        args = run_feedback.parse_args(["x", "--adapter", "claude"])
+        assert run_feedback.resolve_model_id(args) == DEFAULT_MODEL
+
     def test_invalid_reply_retried(self, bundle_dir):
         run_feedback.run(bundle_dir, FakeAdapter(reply='{"decision": "pass", "conf'))
         assert not load_feedback(bundle_dir).schema_valid

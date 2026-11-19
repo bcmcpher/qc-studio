@@ -31,6 +31,8 @@ LOG = logging.getLogger("run_feedback")
 
 ADAPTERS = ("claude", "openai_compat")
 MODEL_ENV = {"claude": "CLAUDE_MODEL", "openai_compat": "OPENAI_MODEL"}
+BASE_URL_ENV = {"claude": "ANTHROPIC_BASE_URL", "openai_compat": "OPENAI_BASE_URL"}
+"""The endpoint variables each adapter reads; the adapter modules hold the same names."""
 
 
 def find_bundles(root: Path) -> list[Path]:
@@ -100,7 +102,7 @@ def run(root: Path, adapter: ModelAdapter, overwrite: bool = False) -> Counter:
 
 def resolve_model_id(args: argparse.Namespace) -> Optional[str]:
     """The model id the arguments select: ``--model_id``, then the adapter's env variable, then the Claude default."""
-    model_id = args.model_id or os.environ.get(MODEL_ENV[args.adapter])
+    model_id = args.model_id or os.environ.get(MODEL_ENV[args.adapter]) or None
     if model_id is None and args.adapter == "claude":
         from model_adapters.claude import DEFAULT_MODEL
 

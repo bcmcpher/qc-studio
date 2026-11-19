@@ -182,7 +182,18 @@ class TestVariants:
     def test_staged_views_get_neutral_names(self):
         staged = run_eval.variant_bundle(_bundle("sub-01", flagged=True), VARIANT["core_targeted_hidden"])
         assert [v.path for v in staged.views] == ["views/view_01.png", "views/view_02.png", "views/view_03.png"]
-        assert staged.views[2].rule == "noise"  # kept in bundle.json for the evaluation, never in the prompt
+        assert "noise" in {v.rule for v in staged.views}  # kept in bundle.json for the evaluation, never in the prompt
+
+    def test_hidden_views_shuffled_stably(self):
+        orders = set()
+        for pid in ("sub-01", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07"):
+            bundle = _bundle(pid, flagged=True)
+            hidden = [v.rule for v in run_eval.variant_bundle(bundle, VARIANT["core_targeted_hidden"]).views]
+            assert hidden == [v.rule for v in run_eval.variant_bundle(bundle, VARIANT["core_targeted_hidden"]).views]
+            orders.add(tuple(hidden))
+            stated = [v.rule for v in run_eval.variant_bundle(bundle, VARIANT["core_targeted_stated"]).views]
+            assert stated == [None, None, "noise"]
+        assert len(orders) > 1  # the targeted view is not always last
 
     @pytest.mark.parametrize("reason", ["stated", "hidden"])
     def test_control_never_named(self, reason):
@@ -193,7 +204,8 @@ class TestVariants:
         text = run_eval.package_text(_bundle("sub-01", flagged=True), "stated")
         assert "`snr_wm`" in text and "Flagged metrics: `snr_wm`" in text
         assert "| sequence | `RepetitionTime` | 2.3 |" in text and "`mriqc_version`" in text
-        assert "`FlipAngle`: 8" in text and "VoxelSize=1x1x1" in text
+        assert "`FlipAngle`: 8" in text
+        assert "- Project: used" in text and "- MRIQC reference: used" in text
 
     @pytest.mark.parametrize("reason", ["stated", "hidden"])
     def test_package_withholds_identifiers_and_rater(self, reason):
@@ -209,7 +221,10 @@ class TestVariants:
             "Prisma",
             "syngo",
             "Manufacturer",
-            "MagneticFieldStrength=",
+            "MagneticFieldStrength",
+            "VoxelSize",
+            "n=40",
+            "1200",
             "d41d8cd98f00b204",
             "md5sum",
             "Rater QC",
@@ -226,6 +241,12 @@ class TestVariants:
 
     def test_model_key_keeps_similar_ids_apart(self):
         assert run_eval.model_key("openai_compat", "org/model:v1") != run_eval.model_key("openai_compat", "org-model-v1")
+
+    def test_model_key_separates_endpoints_and_token_limits(self):
+        base = run_eval.model_key("openai_compat", "llava", "http://a:8000/v1")
+        assert base != run_eval.model_key("openai_compat", "llava", "http://b:8000/v1")
+        assert base != run_eval.model_key("openai_compat", "llava", "http://a:8000/v1", max_tokens=512)
+        assert "a:8000" not in base
 
     def test_no_images_keeps_only_iqms(self):
         assert [v.name for v in run_eval.variants_for(None, images=False)] == ["iqms"]
@@ -275,7 +296,29 @@ class TestRun:
         out = bundle_root / "eval"
         _run(bundle_root, out, FakeAdapter())
         jobs, _ = run_eval.plan(bundle_root, out, "fake__x", VARIANTS)
-        assert len(jobs) == 8 and all(not run_eval._inside(job.source_dir, out) for job in jobs)
+        assert len(jobs) == 8 and all(out not in job.source_dir.parents for job in jobs)
+
+    def test_bundle_root_inside_out_dir_is_read(self, bundle_root):
+        jobs, _ = run_eval.plan(bundle_root, bundle_root.parent, "fake__x", VARIANTS)
+        assert len(jobs) == 8 and {job.action for job in jobs} == {"send"}
+
+    def test_invalid_reply_is_kept(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        bad = FakeAdapter()
+        bad.complete = lambda prompt, images: "not json"
+        counts, _ = _run(bundle_root, out, bad, variants=[VARIANT["core"]])
+        assert counts == {"ok": 2}
+        again = FakeAdapter()
+        counts, _ = _run(bundle_root, out, again, variants=[VARIANT["core"]])
+        assert counts == {"kept": 2} and not again.calls  # a resend would inflate schema validity
+
+    def test_changed_content_is_resent(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        _run(bundle_root, out, FakeAdapter(), variants=[VARIANT["core"]])
+        (bundle_root / "sub-01" / "anat" / "views" / "core_axial.png").write_bytes(_png(80, 40))
+        again = FakeAdapter()
+        counts, _ = _run(bundle_root, out, again, variants=[VARIANT["core"]])
+        assert counts == {"kept": 1, "ok": 1}
 
     def test_missing_view_gives_error_row(self, bundle_root, tmp_path):
         out = tmp_path / "out"
@@ -391,6 +434,17 @@ class TestCollect:
             assert (rows[variant]["control_rules"], rows[variant]["control_confirmed"]) == ("", "")
         # The clean scan has no flag, so the model's snr_wm flag breaks consistency.
         assert {r["consistency_valid"] for r in rows.values()} == {"0"}
+        # A fail on a control scan counts in every variant; the flagged scan has no value.
+        assert {r["control_nonpass"] for r in rows.values()} == {"1"}
+        assert {r["control_nonpass"] for r in run_eval.collect(out) if r["participant_id"] == "sub-01"} == {""}
+
+    def test_broken_cell_fails_collect(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        _, key = _run(bundle_root, out, FakeAdapter(), variants=[VARIANT["core"]])
+        (out / key / "core" / "sub-01" / "anat" / "bundle.json").write_text("{")
+        broken = []
+        assert len(run_eval.collect(out, broken=broken)) == 1 and len(broken) == 1
+        assert run_eval.main(["--collect_only", "--out_dir", str(out)]) == 1
 
     def test_control_confirmed_needs_rule_metric(self):
         assert run_eval.control_confirmed(["cjv"], ["noise"]) is False
@@ -508,6 +562,15 @@ class TestReport:
         assert (s.false_confirmation.k, s.false_confirmation.n) == (1, 2)
         assert str(report.summarize([_result_row()]).false_confirmation) == "–"
 
+    def test_control_nonpass(self):
+        rows = [
+            _result_row(control_scan="1", decision="fail", control_nonpass="1"),
+            _result_row(control_scan="1", decision="pass", control_nonpass="0"),
+            _result_row(decision="fail"),
+        ]
+        s = report.summarize(rows)
+        assert (s.control_nonpass.k, s.control_nonpass.n) == (1, 2)
+
     def test_support_and_contrast_split(self):
         rows = [
             _result_row(bids_name="a_T1w"),
@@ -567,6 +630,7 @@ class TestReport:
         assert str(stated.agreement) == "1/2 (50.0%)"
         assert str(stated.false_confirmation) == "1/1 (100.0%)"  # the clean scan's control view
         assert str(report.summarize(by_variant["core"]).false_confirmation) == "–"
+        assert str(report.summarize(by_variant["core"]).control_nonpass) == "1/1 (100.0%)"
 
     def test_cli_rejects_missing_columns(self, tmp_path):
         path = tmp_path / "results.tsv"

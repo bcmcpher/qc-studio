@@ -43,11 +43,24 @@ braindr ratings for HBN. Labels are per scan (accept / doubtful / exclude, or a 
   the IQM values, percentiles, flags, outlier score, acquisition table, acquisition deviations
   and the views with their labels. It has no scan identifier (participant, session, pipeline,
   QC task, BIDS name), no rater QC, and no site, scanner fields or file `md5sum` — not in the
-  acquisition table, the deviations or the distribution filters. Each of these can stand in
-  for the label (an ID or hash names the scan; site and scanner cluster with labels in
-  multi-site data). They stay in `bundle.json` and the results TSV for the analysis. No view
+  acquisition table, the deviations or the distributions. Each of these can stand in for the
+  label (an ID or hash names the scan; site and scanner cluster with labels in multi-site
+  data). A distribution shows only whether it was used: its size, filters and note are left
+  out, since the project stratum is cut by site and the reference subset by scanner, so a size
+  or fallback note can name either. They stay in `bundle.json` and the results TSV for the analysis. No view
   label says "control", and staged views get neutral file names. Flags are computed from the
   IQMs, not by raters, so they stay. The product's export is unchanged.
+- **Hidden reason.** Hidden mode drops the kind and rule from each view label and shuffles
+  the views, seeded by the BIDS name. Two cues remain: a targeted view adds a second view of a
+  plane, and its window can look unlike a core view (the noise view saturates the head). So
+  "hidden" removes the stated reason, not every sign that a view is targeted.
+- **Control measures** (review finding, 2026-11-19). Control non-pass is the share of control
+  scans with a `fail` or `uncertain` decision, in every variant; the `core` variant gives the
+  rate for the same scans without the control view. False confirmation (metric) counts a
+  flagged metric of the control view's rule; it is near 0 by design, since control views go
+  only on scans with no flagged metric and such a flag also fails the consistency check.
+- **Final results.** A reply is final whether or not it parses; only errors are resent, so
+  reruns do not inflate schema validity.
 - **Order.** Section 2 (runner and synthetic tests) comes before section 1, because the dataset
   waits on the maintainers.
 

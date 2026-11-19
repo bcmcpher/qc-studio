@@ -5,7 +5,7 @@ images, bundles or model access, so a TSV copied from another host gives the sam
 
 For each cell (adapter, model and variant) it reports schema validity, consistency validity,
 agreement with the labels with and without ``uncertain`` (with Cohen's kappa), and the
-false-confirmation rate on control views. The same numbers are broken down by support tier
+false-confirmation rate on control scans. The same numbers are broken down by support tier
 (``supported`` / ``fallback``) and contrast. Unsupported scans are never sent and are only
 counted.
 
@@ -47,6 +47,7 @@ REQUIRED_COLUMNS = frozenset(
         "consistency_valid",
         "decision",
         "control_confirmed",
+        "control_nonpass",
         "label",
     }
 )
@@ -144,6 +145,7 @@ class Summary:
     agreement_binary: Rate
     kappa_binary: Optional[float]
     false_confirmation: Rate
+    control_nonpass: Rate
 
 
 def summarize(rows: Sequence[Row]) -> Summary:
@@ -153,6 +155,7 @@ def summarize(rows: Sequence[Row]) -> Summary:
     labelled = [r for r in rows if r["decision"] and r["label"]]
     binary = [r for r in labelled if "uncertain" not in (r["decision"], r["label"])]
     controls = [r for r in rows if r["control_confirmed"] in ("0", "1")]
+    control_scans = [r for r in rows if r["control_nonpass"] in ("0", "1")]
     return Summary(
         rows=len(rows),
         sent=len(sent),
@@ -165,6 +168,7 @@ def summarize(rows: Sequence[Row]) -> Summary:
         agreement_binary=Rate(sum(r["decision"] == r["label"] for r in binary), len(binary)),
         kappa_binary=cohen_kappa([(r["decision"], r["label"]) for r in binary]),
         false_confirmation=Rate(sum(r["control_confirmed"] == "1" for r in controls), len(controls)),
+        control_nonpass=Rate(sum(r["control_nonpass"] == "1" for r in control_scans), len(control_scans)),
     )
 
 
@@ -220,8 +224,14 @@ DEFINITIONS = """\
 - **Agreement (pass/fail):** the same, leaving out rows where the label or the decision is
   `uncertain`.
 - **κ:** Cohen's kappa over the same rows; `–` when undefined.
-- **False confirmation:** rows that show a control view where the model flagged a metric of
-  that view's rule. Only variants with targeted views can show a control view.
+- **Control non-pass:** rows of control scans (label-clean scans given a targeted view in
+  control mode) where the decision is `fail` or `uncertain`. Every variant has it: in the
+  targeted variants it is the false-confirmation rate, and `iqms` and `core` give the same
+  scans' rate without the control view, so the difference is the control view's effect.
+- **False confirmation (metric):** rows that show a control view where the model flagged a
+  metric of that view's rule. Control views go only on scans with no flagged metric, so a
+  reply that does this also fails the consistency check; a model that fails the scan without
+  naming a metric is counted only under control non-pass.
 - **Prompt digest:** a hash over the cell's distinct prompt hashes; two cells with the same
   digest sent the same prompts.
 """
@@ -237,7 +247,8 @@ METRIC_HEADER = (
     "κ",
     "Agreement (pass/fail)",
     "κ (pass/fail)",
-    "False confirmation",
+    "Control non-pass",
+    "False confirmation (metric)",
 )
 
 
@@ -253,6 +264,7 @@ def _metric_cells(s: Summary) -> list[str]:
         _kappa_text(s.kappa),
         str(s.agreement_binary),
         _kappa_text(s.kappa_binary),
+        str(s.control_nonpass),
         str(s.false_confirmation),
     ]
 

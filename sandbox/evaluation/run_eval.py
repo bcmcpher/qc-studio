@@ -24,6 +24,8 @@ import csv
 import hashlib
 import json
 import logging
+import os
+import random
 import re
 import shutil
 import struct
@@ -40,8 +42,8 @@ for _path in (Path(__file__).resolve().parents[1], Path(__file__).resolve().pare
         sys.path.insert(0, str(_path))
 
 from model_adapters.base import BUNDLE_FILE, PACKAGE_FILE, PROMPT_TEMPLATE, DataUseError, ModelAdapter, load_bundle  # noqa: E402
-from model_adapters.run_feedback import add_adapter_args, find_bundles, make_adapter, resolve_model_id  # noqa: E402
-from evidence_bundle.export import _cell, _deviation_lines, _distribution_text, package_context, render_markdown_template  # noqa: E402
+from model_adapters.run_feedback import BASE_URL_ENV, add_adapter_args, find_bundles, make_adapter, resolve_model_id  # noqa: E402
+from evidence_bundle.export import _cell, _deviation_lines, package_context, render_markdown_template  # noqa: E402
 from evidence_bundle.feedback import FEEDBACK_FILE, FeedbackResult, error_result, load_feedback, write_feedback  # noqa: E402
 from evidence_bundle.models import AcquisitionMetadata, DistributionContext, EvidenceBundle, ScannerMetadata, ViewRef  # noqa: E402
 from evidence_bundle.view_rules import FLAG_RULES  # noqa: E402
@@ -110,6 +112,7 @@ ROW_FIELDS: tuple[str, ...] = (
     "confidence",
     "flagged_metrics",
     "control_confirmed",
+    "control_nonpass",
     "label",
     "original_label",
     "agreement",
@@ -120,14 +123,22 @@ ROW_FIELDS: tuple[str, ...] = (
 # --- variants --------------------------------------------------------------------------------
 
 
-def model_key(adapter: str, model_id: Optional[str]) -> str:
-    """Folder name for one adapter and model: ``<adapter>__<model id>-<hash>``, filesystem-safe.
+def model_key(adapter: str, model_id: Optional[str], endpoint: Optional[str] = None, max_tokens: Optional[int] = None) -> str:
+    """Folder name for one adapter, model and endpoint: ``<adapter>__<model id>-<hash>``, filesystem-safe.
 
-    The hash of the raw model id keeps ids that differ only in replaced characters apart.
+    The hash covers the raw model id, the endpoint and the reply token limit, so ids that differ
+    only in replaced characters, or one model name served by two endpoints, get their own folders.
+    The endpoint itself is not written into the name.
     """
     raw = model_id or "default"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    identity = json.dumps([raw, endpoint or None, max_tokens])
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
     return f"{adapter}__{re.sub(r'[^A-Za-z0-9._-]+', '-', raw)}-{digest}"
+
+
+def resolve_endpoint(args: argparse.Namespace) -> Optional[str]:
+    """The endpoint the adapter will use: ``--base_url``, then the adapter's env variable."""
+    return args.base_url or os.environ.get(BASE_URL_ENV[args.adapter]) or None
 
 
 def variant_views(views: Sequence[ViewRef], view_set: ViewSet) -> list[ViewRef]:
@@ -142,12 +153,13 @@ def staged_views(bundle: EvidenceBundle, variant: Variant) -> list[tuple[str, Vi
     """The variant's views as (source path, view renamed ``views/view_NN.png``).
 
     Export names a view after its kind and rule (``targeted_noise``); the neutral name keeps
-    that out of the prompt, which lists each image's path.
+    that out of the prompt, which lists each image's path. With a hidden reason the views are
+    shuffled, seeded by the BIDS name, since targeted views otherwise always come last.
     """
-    return [
-        (view.path, view.model_copy(update={"path": f"views/view_{index:02d}.png"}))
-        for index, view in enumerate(variant_views(bundle.views, variant.view_set), start=1)
-    ]
+    views = variant_views(bundle.views, variant.view_set)
+    if variant.reason == "hidden":
+        random.Random(bundle.bids_name).shuffle(views)
+    return [(view.path, view.model_copy(update={"path": f"views/view_{index:02d}.png"})) for index, view in enumerate(views, start=1)]
 
 
 def variant_bundle(bundle: EvidenceBundle, variant: Variant) -> EvidenceBundle:
@@ -184,25 +196,28 @@ def acquisition_table(acquisition: AcquisitionMetadata) -> str:
     return "\n".join(rows)
 
 
-def blind_distribution(context: Optional[DistributionContext]) -> Optional[DistributionContext]:
-    """The distribution without the values of withheld filters (site, scanner); field names stay."""
-    if context is None:
-        return None
-    return context.model_copy(update={"filters": {k: v for k, v in context.filters.items() if k not in WITHHELD_FIELDS}})
+def blind_distribution_text(name: str, context: Optional[DistributionContext]) -> str:
+    """Whether a comparison distribution exists, and nothing more.
+
+    Its size, filters and note are left out: the project stratum is cut by site and the
+    reference subset by scanner, so each size or fallback note can name the site or vendor, and
+    a note can hold raw error text.
+    """
+    return f"- {name}: {'used' if context is not None and context.n else 'none'}"
 
 
 def package_text(bundle: EvidenceBundle, reason: ReasonMode) -> str:
     """The evaluation ``PACKAGE.md`` for a variant bundle.
 
     Rendered from the export's context with no scan identifiers, no rater QC, none of
-    ``WITHHELD_FIELDS`` (acquisition rows, deviations or distribution filters), and the
-    variant's view labels.
+    ``WITHHELD_FIELDS`` (acquisition rows or deviations), no distribution size, filter or note,
+    and the variant's view labels.
     """
     context = package_context(bundle)
     context["acquisition_table"] = acquisition_table(bundle.acquisition)
     context["deviations"] = _deviation_lines([d for d in bundle.acquisition_deviations if d.field not in WITHHELD_FIELDS])
-    context["project"] = _distribution_text("Project", blind_distribution(bundle.project))
-    context["reference"] = _distribution_text("MRIQC reference", blind_distribution(bundle.reference))
+    context["project"] = blind_distribution_text("Project", bundle.project)
+    context["reference"] = blind_distribution_text("MRIQC reference", bundle.reference)
     context["views"] = views_text(bundle.views, reason)
     return render_markdown_template(EVAL_PACKAGE_TEMPLATE, context)
 
@@ -211,10 +226,28 @@ def _unique(items: Sequence[Optional[str]]) -> list[str]:
     return list(dict.fromkeys(item for item in items if item))
 
 
-def cell_info(bundle: EvidenceBundle, staged: EvidenceBundle, variant: Variant, source_bundle: str) -> dict[str, Any]:
-    """What ``cell.json`` records: the variant, whether the scan is a control scan, and the
-    targeted and control rules of the views this variant shows (none for ``iqms`` and ``core``)."""
+def staging_hash(source_dir: Path, bundle: EvidenceBundle, variant: Variant) -> str:
+    """A hash of what a cell would send: the prompt template, the blind package and each view's
+    name and bytes. A changed template, blinding rule, view order or re-exported bundle changes it.
+
+    Raises ``OSError`` when a view cannot be read.
+    """
+    pairs = staged_views(bundle, variant)
+    staged = bundle.model_copy(update={"views": [view for _, view in pairs]})
+    digest = hashlib.sha256(PROMPT_TEMPLATE.read_bytes())
+    digest.update(package_text(staged, variant.reason).encode("utf-8"))
+    for source, view in pairs:
+        digest.update(view.path.encode("utf-8"))
+        digest.update((source_dir / source).read_bytes())
+    return digest.hexdigest()
+
+
+def cell_info(bundle: EvidenceBundle, staged: EvidenceBundle, variant: Variant, source_bundle: str, content: Optional[str]) -> dict[str, Any]:
+    """What ``cell.json`` records: the variant, whether the scan is a control scan, the targeted
+    and control rules of the views this variant shows (none for ``iqms`` and ``core``), and the
+    staging hash."""
     return {
+        "staging_hash": content,
         "variant": variant.name,
         "view_set": variant.view_set,
         "reason": variant.reason,
@@ -233,8 +266,12 @@ def stage(source_dir: Path, bundle: EvidenceBundle, variant: Variant, cell_dir: 
     """
     pairs = staged_views(bundle, variant)
     staged = bundle.model_copy(update={"views": [view for _, view in pairs]})
+    try:
+        content: Optional[str] = staging_hash(source_dir, bundle, variant)
+    except OSError:
+        content = None  # the copy below fails and the cell records the error
     cell_dir.mkdir(parents=True, exist_ok=True)
-    (cell_dir / CELL_FILE).write_text(json.dumps(cell_info(bundle, staged, variant, source_bundle), indent=2), encoding="utf-8")
+    (cell_dir / CELL_FILE).write_text(json.dumps(cell_info(bundle, staged, variant, source_bundle, content), indent=2), encoding="utf-8")
     (cell_dir / BUNDLE_FILE).write_text(staged.model_dump_json(indent=2), encoding="utf-8")
     (cell_dir / PACKAGE_FILE).write_text(package_text(staged, variant.reason), encoding="utf-8")
     shutil.rmtree(cell_dir / "views", ignore_errors=True)
@@ -302,9 +339,13 @@ def variants_for(names: Optional[Sequence[str]], images: bool) -> list[Variant]:
     return selected
 
 
-def is_done(cell_dir: Path, bundle: EvidenceBundle) -> bool:
-    """True when the cell already holds a final result: a schema-valid reply, or the skip of an
-    unsupported bundle. An error, an invalid reply or an unreadable file is resent."""
+def is_done(cell_dir: Path, bundle: EvidenceBundle, content: Optional[str]) -> bool:
+    """True when the cell already holds a final result for what it would send now.
+
+    Final is any reply (``ok``, schema-valid or not, since a resent invalid reply would inflate
+    schema validity) or the skip of an unsupported bundle. An error or an unreadable file is
+    resent. ``content`` is the current staging hash; a cell staged from other content is resent.
+    """
     if not (cell_dir / FEEDBACK_FILE).exists():
         return False
     try:
@@ -313,22 +354,21 @@ def is_done(cell_dir: Path, bundle: EvidenceBundle) -> bool:
         return False
     if bundle.support == "unsupported":
         return result.status == "skipped_unsupported"
-    return result.status == "ok" and result.schema_valid
-
-
-def _inside(path: Path, folder: Path) -> bool:
-    path, folder = path.resolve(), folder.resolve()
-    return path == folder or folder in path.parents
+    try:
+        staged = json.loads((cell_dir / CELL_FILE).read_text(encoding="utf-8")).get("staging_hash")
+    except (OSError, ValueError):
+        return False
+    return result.status == "ok" and content is not None and staged == content
 
 
 def plan(root: Path, out_dir: Path, key: str, variants: Sequence[Variant], overwrite: bool = False) -> tuple[list[Job], list[Path]]:
     """Every (bundle, variant) job under ``root``, and the bundle folders whose ``bundle.json`` is unreadable.
 
-    Bundles under ``out_dir`` are staged cells, not sources, and are skipped.
+    Folders with a ``cell.json`` are staged cells, not sources, and are skipped.
     """
     jobs, unreadable = [], []
     for source_dir in find_bundles(root):
-        if _inside(source_dir, out_dir):
+        if (source_dir / CELL_FILE).exists():
             continue
         try:
             bundle = load_bundle(source_dir)
@@ -339,7 +379,11 @@ def plan(root: Path, out_dir: Path, key: str, variants: Sequence[Variant], overw
         source_bundle = source_dir.relative_to(root).as_posix()
         for variant in variants:
             cell_dir = out_dir / key / variant.name / source_bundle
-            if not overwrite and is_done(cell_dir, bundle):
+            try:
+                content: Optional[str] = staging_hash(source_dir, bundle, variant)
+            except OSError:
+                content = None
+            if not overwrite and is_done(cell_dir, bundle, content):
                 action = "kept"
             elif bundle.support == "unsupported":
                 action = "skip_unsupported"
@@ -461,6 +505,7 @@ def collect_row(cell_dir: Path, out_dir: Path, labels: Mapping[str, tuple[str, s
     feedback = result.feedback if result is not None else None
     label, original = labels.get(bundle.bids_name, ("", ""))
     control_rules = info.get("control_rules", [])
+    control_scan = bool(info.get("control_scan"))
     row = {
         "participant_id": bundle.participant_id,
         "session_id": bundle.session_id,
@@ -475,7 +520,7 @@ def collect_row(cell_dir: Path, out_dir: Path, labels: Mapping[str, tuple[str, s
         "view_set": info["view_set"],
         "reason": info["reason"],
         "n_views": str(len(bundle.views)),
-        "control_scan": _flag(bool(info.get("control_scan"))),
+        "control_scan": _flag(control_scan),
         "control_rules": ",".join(control_rules),
         "targeted_rules": ",".join(info.get("targeted_rules", [])),
         "prompt_hash": (result.prompt_hash or "") if result else "",
@@ -486,6 +531,7 @@ def collect_row(cell_dir: Path, out_dir: Path, labels: Mapping[str, tuple[str, s
         "confidence": feedback.confidence if feedback else "",
         "flagged_metrics": ",".join(feedback.flagged_metrics) if feedback else "",
         "control_confirmed": _flag(control_confirmed(feedback.flagged_metrics, control_rules)) if feedback else "",
+        "control_nonpass": _flag(feedback.decision != "pass") if feedback and control_scan else "",
         "label": label,
         "original_label": original,
         "agreement": _flag(feedback.decision == label) if feedback and label else "",
@@ -494,14 +540,19 @@ def collect_row(cell_dir: Path, out_dir: Path, labels: Mapping[str, tuple[str, s
     return row
 
 
-def collect(out_dir: Path, labels: Optional[Mapping[str, tuple[str, str]]] = None) -> list[dict[str, str]]:
-    """One row per cell folder under ``out_dir``, sorted by source bundle and cell."""
+def collect(out_dir: Path, labels: Optional[Mapping[str, tuple[str, str]]] = None, broken: Optional[list[Path]] = None) -> list[dict[str, str]]:
+    """One row per cell folder under ``out_dir``, sorted by source bundle and cell.
+
+    A cell folder that cannot be read is logged and appended to ``broken``, if given.
+    """
     rows = []
     for cell_file in sorted(Path(out_dir).rglob(CELL_FILE)):
         try:
             rows.append(collect_row(cell_file.parent, out_dir, labels or {}))
         except Exception as err:  # noqa: BLE001 - a broken cell folder is reported, not fatal
             LOG.error("%s: %s: %s", cell_file.parent, type(err).__name__, err)
+            if broken is not None:
+                broken.append(cell_file.parent)
     return sorted(rows, key=lambda r: (r["source_bundle"], r["cell_id"]))
 
 
@@ -551,7 +602,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             LOG.error("not a folder: %s", args.bundle_root)
             return 2
         images = not args.iqms_only
-        key = model_key(args.adapter, resolve_model_id(args))
+        key = model_key(args.adapter, resolve_model_id(args), resolve_endpoint(args), args.max_tokens)
         jobs, unreadable = plan(args.bundle_root, args.out_dir, key, variants_for(args.variants, images), overwrite=args.overwrite)
         if args.dry_run:
             summary = dry_run_summary(jobs, images)
@@ -567,9 +618,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         LOG.info("done: %s", ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) or "no jobs")
         if counts["failed"]:
             unreadable.append(args.out_dir)
-    rows = collect(args.out_dir, labels)
+    broken: list[Path] = []
+    rows = collect(args.out_dir, labels, broken)
     path = write_results(args.results or args.out_dir / RESULTS_FILE, rows)
     LOG.info("%d rows written to %s", len(rows), path)
+    if broken:
+        LOG.error("%d cell folders could not be read and have no row", len(broken))
+        unreadable += broken
     return 1 if unreadable else 0
 
 
