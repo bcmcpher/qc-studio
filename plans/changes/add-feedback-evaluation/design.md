@@ -32,6 +32,15 @@ braindr ratings for HBN. Labels are per scan (accept / doubtful / exclude, or a 
 - **Data location.** Downloads go to a path outside the repo given by `--data_dir`.
 - **Output.** One TSV, one row per (scan, cell): validity flags, decision, label, agreement.
   The report reads only that TSV.
+- **Several results per bundle.** `run_eval.py` writes each cell's result to
+  `<out>/<cell_id>/<bundle>/feedback.json` under its own output directory. The one
+  `feedback.json` beside each bundle, written by `run_feedback.py` and read by the panel, stays
+  as it is.
+- **Variants at prompt time.** Bundles are exported once. `run_eval.py` makes the view-set and
+  hidden-reason variants by filtering `bundle.views` and blanking the targeted-view reason
+  before the prompt is built. The export CLI gets no new flags.
+- **Order.** Section 2 (runner and synthetic tests) comes before section 1, because the dataset
+  waits on the maintainers.
 
 ## Risks / Trade-offs
 
@@ -48,4 +57,4 @@ braindr ratings for HBN. Labels are per scan (accept / doubtful / exclude, or a 
 - Budget for cloud runs; where 8B+ local models run.
 - Agreement threshold that would justify offering the panel to all projects.
 - Whether to add the in-study feedback ratings (`feedback_rating` in `*_qc_status.tsv`) to the
-  report once enough exist.
+  report once enough exist. Deferred (2026-11-19): left out until enough ratings exist.
