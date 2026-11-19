@@ -64,10 +64,34 @@ As built (section 2):
 
 ## 3. Report — `sandbox/evaluation/report.py`
 
-- [ ] 3.1 Compute schema validity, consistency validity, agreement with labels (with and without `uncertain`), false-confirmation rate on controls
-- [ ] 3.2 Report rater agreement where the dataset has several raters
-- [ ] 3.3 Report `supported` and `fallback` bundles separately, per contrast
-- [ ] 3.4 Write a Markdown report with sample size, seed, model ids and prompt hashes
+- [x] 3.1 Compute schema validity, consistency validity, agreement with labels (with and without `uncertain`), false-confirmation rate on controls
+- [x] 3.2 Report rater agreement where the dataset has several raters
+- [x] 3.3 Report `supported` and `fallback` bundles separately, per contrast
+- [x] 3.4 Write a Markdown report with sample size, seed, model ids and prompt hashes
+
+As built (section 3):
+
+- `report.py RESULTS [--seed S] [--rater_labels TSV] [--out PATH]` reads only the results TSV and
+  the optional rater-label TSV; default output `report.md` beside the TSV. The report names the
+  TSV by file name and the first 16 hex digits of its SHA-256, not by its full path.
+- 3.1: per cell. Schema validity is over sent rows (`ok` + `error`), so staging, transport and
+  refusal errors count against it; `missing` rows are counted, not in the rate. Consistency
+  validity is over schema-valid rows. Agreement is computed from `decision` and `label`, 3-class
+  and pass/fail (rows where either is `uncertain` left out), each with Cohen's kappa, since
+  raw agreement is high on a pass-heavy sample. False confirmation is over rows with a
+  `control_confirmed` value, so only targeted variants have one.
+- 3.2: `--rater_labels` takes `bids_name`, `rater`, `label` (mapped labels; blank lines skipped,
+  a rater labelling a scan twice is an error). Pairwise agreement and kappa, 3-class and
+  pass/fail, on the sampled scans both raters labelled. Task 1.3 must write this file when the
+  dataset has several raters.
+- 3.3: a second table splits each cell by support tier and contrast (`suffix`). Unsupported
+  scans are counted in the header and left out of every table.
+- 3.4: header has sample size (scans, labelled scans, control scans), seed, cell count. The seed
+  is a CLI option, since the TSV does not carry it; section 1 decides where the sampler records
+  it. The cell table lists adapter, model id, variant, the number of distinct prompt hashes and
+  a digest over them (equal digests mean equal prompts); one hash per row stays in the TSV.
+- Tests: 10 more in `ui/tests/test_feedback_evaluation.py` (45 total), including a report built
+  from a copied TSV after the cell folders are deleted.
 
 ## 4. Decisions back to other changes
 

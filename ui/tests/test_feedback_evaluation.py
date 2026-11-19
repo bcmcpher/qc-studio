@@ -2,6 +2,7 @@
 
 import csv
 import json
+import shutil
 import struct
 import sys
 import zlib
@@ -30,6 +31,7 @@ if str(SANDBOX_DIR) not in sys.path:
 
 from model_adapters.base import ModelAdapter  # noqa: E402
 from evaluation import run_eval  # noqa: E402
+from evaluation import report  # noqa: E402
 from evaluation.run_eval import VARIANTS  # noqa: E402
 
 VARIANT = {v.name: v for v in VARIANTS}
@@ -438,3 +440,135 @@ class TestCollect:
     def test_cli_needs_adapter_unless_collect_only(self, tmp_path):
         with pytest.raises(SystemExit):
             run_eval.parse_args([str(tmp_path), "--out_dir", str(tmp_path / "out")])
+
+
+def _result_row(**values: str) -> dict[str, str]:
+    """A results-TSV row with every column blank except ``values``; defaults to one ok reply."""
+    row = dict.fromkeys(run_eval.ROW_FIELDS, "")
+    row.update(
+        bids_name="sub-01_ses-01_T1w",
+        suffix="T1w",
+        support="supported",
+        cell_id="fake__fake-1/core",
+        adapter="fake",
+        model_id="fake-1",
+        variant="core",
+        control_scan="0",
+        prompt_hash="h1",
+        status="ok",
+        schema_valid="1",
+        consistency_valid="1",
+        decision="pass",
+    )
+    row.update(values)
+    return row
+
+
+class TestReport:
+    def test_kappa(self):
+        assert report.cohen_kappa([("pass", "pass"), ("fail", "fail")]) == 1.0
+        assert report.cohen_kappa([("pass", "pass")] * 3) is None  # chance agreement is 1
+        assert report.cohen_kappa([]) is None
+        pairs = [("pass", "pass")] * 20 + [("pass", "fail")] * 5 + [("fail", "pass")] * 10 + [("fail", "fail")] * 15
+        assert report.cohen_kappa(pairs) == pytest.approx(0.4)
+
+    def test_validity_denominators(self):
+        rows = [
+            _result_row(),
+            _result_row(consistency_valid="0"),
+            _result_row(status="ok", schema_valid="0", consistency_valid="", decision=""),
+            _result_row(status="error", schema_valid="", consistency_valid="", decision=""),
+            _result_row(status="missing", schema_valid="", consistency_valid="", decision=""),
+        ]
+        s = report.summarize(rows)
+        assert (s.rows, s.sent, s.errors, s.missing) == (5, 4, 1, 1)
+        assert (s.schema_valid.k, s.schema_valid.n) == (2, 4)
+        assert (s.consistency_valid.k, s.consistency_valid.n) == (1, 2)
+
+    def test_agreement_with_and_without_uncertain(self):
+        rows = [
+            _result_row(decision="pass", label="pass"),
+            _result_row(decision="fail", label="pass"),
+            _result_row(decision="uncertain", label="fail"),
+            _result_row(decision="fail", label="uncertain"),
+            _result_row(decision="uncertain", label="uncertain"),
+            _result_row(decision="pass", label=""),
+        ]
+        s = report.summarize(rows)
+        assert (s.agreement.k, s.agreement.n) == (2, 5)
+        assert (s.agreement_binary.k, s.agreement_binary.n) == (1, 2)
+
+    def test_false_confirmation_only_on_rows_showing_a_control(self):
+        rows = [
+            _result_row(control_confirmed="1"),
+            _result_row(control_confirmed="0"),
+            _result_row(control_confirmed=""),
+        ]
+        s = report.summarize(rows)
+        assert (s.false_confirmation.k, s.false_confirmation.n) == (1, 2)
+        assert str(report.summarize([_result_row()]).false_confirmation) == "–"
+
+    def test_support_and_contrast_split(self):
+        rows = [
+            _result_row(bids_name="a_T1w"),
+            _result_row(bids_name="b_FLAIR", suffix="FLAIR", support="fallback"),
+            _result_row(bids_name="c_PDw", suffix="PDw", support="unsupported", status="skipped_unsupported", schema_valid=""),
+        ]
+        text = report.render_report(rows, source_name="results.tsv", source_sha256="0" * 64)
+        assert "| fake__fake-1/core | supported | T1w | 1 |" in text
+        assert "| fake__fake-1/core | fallback | FLAIR | 1 |" in text
+        assert "PDw" not in text
+        assert "- **Sample:** 2 scans" in text and "- **Unsupported scans:** 1" in text
+        assert "- **Seed:** not recorded" in text
+
+    def test_rater_agreement(self, tmp_path):
+        path = tmp_path / "raters.tsv"
+        path.write_text(
+            "bids_name\trater\tlabel\n" "a\tr1\tpass\na\tr2\tpass\n" "b\tr1\tfail\nb\tr2\tuncertain\n" "c\tr1\tpass\nc\tr2\tfail\n" "\t\t\n"
+        )
+        labels = report.load_rater_labels(path)
+        (pair,) = report.rater_agreement(labels, scans={"a", "b"})
+        assert (pair.first, pair.second) == ("r1", "r2")
+        assert (pair.agreement.k, pair.agreement.n) == (1, 2)
+        assert (pair.agreement_binary.k, pair.agreement_binary.n) == (1, 1)
+
+    def test_rater_labels_rejected(self, tmp_path):
+        path = tmp_path / "raters.tsv"
+        path.write_text("bids_name\trater\tlabel\na\tr1\tdoubtful\n")
+        with pytest.raises(ValueError, match="doubtful"):
+            report.load_rater_labels(path)
+        path.write_text("bids_name\trater\tlabel\na\tr1\tpass\na\tr1\tfail\n")
+        with pytest.raises(ValueError, match="duplicate"):
+            report.load_rater_labels(path)
+
+    def test_prompt_digest(self):
+        assert report.prompt_digest(["b", "a", "a"]) == report.prompt_digest(["a", "b"])
+        assert report.prompt_digest(["a"]) != report.prompt_digest(["b"])
+        assert report.prompt_digest([""]) == "–"
+
+    def test_report_from_tsv_only(self, bundle_root, tmp_path):
+        out = tmp_path / "out"
+        _run(bundle_root, out, FakeAdapter())
+        labels = tmp_path / "labels.tsv"
+        labels.write_text("bids_name\tlabel\nsub-01_ses-01_T1w\tfail\nsub-02_ses-01_T1w\tpass\n")
+        assert run_eval.main(["--collect_only", "--out_dir", str(out), "--labels", str(labels)]) == 0
+        results = tmp_path / "copy" / "results.tsv"
+        results.parent.mkdir()
+        results.write_bytes((out / "results.tsv").read_bytes())
+        shutil.rmtree(out)  # no bundle, view or feedback file is left
+        assert report.main([str(results), "--seed", "7"]) == 0
+        text = (results.parent / "report.md").read_text()
+        assert "- **Seed:** 7" in text and "- **Sample:** 2 scans (2 labelled, 1 control scans)" in text
+        assert text.count("| fake | fake-1 |") == 4
+        by_variant = {}
+        for row in report.load_results(results):
+            by_variant.setdefault(row["variant"], []).append(row)
+        stated = report.summarize(by_variant["core_targeted_stated"])
+        assert str(stated.agreement) == "1/2 (50.0%)"
+        assert str(stated.false_confirmation) == "1/1 (100.0%)"  # the clean scan's control view
+        assert str(report.summarize(by_variant["core"]).false_confirmation) == "–"
+
+    def test_cli_rejects_missing_columns(self, tmp_path):
+        path = tmp_path / "results.tsv"
+        path.write_text("bids_name\tstatus\nx\tok\n")
+        assert report.main([str(path)]) == 2
