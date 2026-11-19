@@ -41,12 +41,18 @@ for _path in (Path(__file__).resolve().parents[1], Path(__file__).resolve().pare
 
 from model_adapters.base import BUNDLE_FILE, PACKAGE_FILE, PROMPT_TEMPLATE, DataUseError, ModelAdapter, load_bundle  # noqa: E402
 from model_adapters.run_feedback import add_adapter_args, find_bundles, make_adapter, resolve_model_id  # noqa: E402
-from evidence_bundle.export import PACKAGE_TEMPLATE, package_context, render_markdown_template  # noqa: E402
+from evidence_bundle.export import _cell, _deviation_lines, _distribution_text, package_context, render_markdown_template  # noqa: E402
 from evidence_bundle.feedback import FEEDBACK_FILE, FeedbackResult, error_result, load_feedback, write_feedback  # noqa: E402
-from evidence_bundle.models import EvidenceBundle, ViewRef  # noqa: E402
+from evidence_bundle.models import AcquisitionMetadata, DistributionContext, EvidenceBundle, ScannerMetadata, ViewRef  # noqa: E402
 from evidence_bundle.view_rules import FLAG_RULES  # noqa: E402
 
 LOG = logging.getLogger("run_eval")
+
+EVAL_PACKAGE_TEMPLATE = Path(__file__).with_name("PACKAGE_eval.md")
+"""The export's ``PACKAGE.md`` template without the scan identifiers and the rater QC section."""
+WITHHELD_FIELDS = frozenset({"site", "md5sum", *ScannerMetadata.model_fields})
+"""Acquisition fields never shown to the model in the evaluation: each can identify a scan, a
+site or a dataset, and so stand in for the label. They stay in ``bundle.json`` and the TSV."""
 
 CELL_FILE = "cell.json"
 RESULTS_FILE = "results.tsv"
@@ -168,11 +174,37 @@ def views_text(views: Sequence[ViewRef], reason: ReasonMode) -> str:
     return "\n\n".join(lines)
 
 
+def acquisition_table(acquisition: AcquisitionMetadata) -> str:
+    """The acquisition table without ``WITHHELD_FIELDS``."""
+    rows = []
+    for group in ("sequence", "geometry", "provenance"):
+        for name, value in getattr(acquisition, group).model_dump().items():
+            if name not in WITHHELD_FIELDS:
+                rows.append(f"| {group} | `{name}` | {_cell(value)} |")
+    return "\n".join(rows)
+
+
+def blind_distribution(context: Optional[DistributionContext]) -> Optional[DistributionContext]:
+    """The distribution without the values of withheld filters (site, scanner); field names stay."""
+    if context is None:
+        return None
+    return context.model_copy(update={"filters": {k: v for k, v in context.filters.items() if k not in WITHHELD_FIELDS}})
+
+
 def package_text(bundle: EvidenceBundle, reason: ReasonMode) -> str:
-    """``PACKAGE.md`` for a variant bundle, rendered as the export renders it except for the views."""
+    """The evaluation ``PACKAGE.md`` for a variant bundle.
+
+    Rendered from the export's context with no scan identifiers, no rater QC, none of
+    ``WITHHELD_FIELDS`` (acquisition rows, deviations or distribution filters), and the
+    variant's view labels.
+    """
     context = package_context(bundle)
+    context["acquisition_table"] = acquisition_table(bundle.acquisition)
+    context["deviations"] = _deviation_lines([d for d in bundle.acquisition_deviations if d.field not in WITHHELD_FIELDS])
+    context["project"] = _distribution_text("Project", blind_distribution(bundle.project))
+    context["reference"] = _distribution_text("MRIQC reference", blind_distribution(bundle.reference))
     context["views"] = views_text(bundle.views, reason)
-    return render_markdown_template(PACKAGE_TEMPLATE, context)
+    return render_markdown_template(EVAL_PACKAGE_TEMPLATE, context)
 
 
 def _unique(items: Sequence[Optional[str]]) -> list[str]:

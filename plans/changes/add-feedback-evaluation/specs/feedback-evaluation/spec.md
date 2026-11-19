@@ -36,6 +36,23 @@ write one TSV row per scan and combination.
 - **WHEN** `feedback.json` files for a cell already exist
 - **THEN** the runner reads them instead of calling the adapter
 
+### Requirement: Blind evaluation package
+
+The package sent to a model in the evaluation SHALL contain no scan identifier, no rater QC,
+and no site, scanner or file-hash field, and SHALL NOT say which views are controls. These
+fields SHALL stay available to the analysis.
+
+#### Scenario: No identifying field in the prompt
+
+- **WHEN** a bundle with a participant id, site, scanner metadata, `md5sum` and rater QC is
+  sent in any cell
+- **THEN** none of those values appear in the prompt or in an attached image's name
+
+#### Scenario: Identifiers kept for analysis
+
+- **WHEN** the results TSV is written
+- **THEN** each row still records the scan's participant, session and BIDS name
+
 ### Requirement: Control scans
 
 The evaluation SHALL include label-clean scans with targeted views added in control mode, and

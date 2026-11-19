@@ -39,6 +39,15 @@ braindr ratings for HBN. Labels are per scan (accept / doubtful / exclude, or a 
 - **Variants at prompt time.** Bundles are exported once. `run_eval.py` makes the view-set and
   hidden-reason variants by filtering `bundle.views` and blanking the targeted-view reason
   before the prompt is built. The export CLI gets no new flags.
+- **Blind package** (user decision 2026-11-19). The package a model sees in the evaluation has
+  the IQM values, percentiles, flags, outlier score, acquisition table, acquisition deviations
+  and the views with their labels. It has no scan identifier (participant, session, pipeline,
+  QC task, BIDS name), no rater QC, and no site, scanner fields or file `md5sum` — not in the
+  acquisition table, the deviations or the distribution filters. Each of these can stand in
+  for the label (an ID or hash names the scan; site and scanner cluster with labels in
+  multi-site data). They stay in `bundle.json` and the results TSV for the analysis. No view
+  label says "control", and staged views get neutral file names. Flags are computed from the
+  IQMs, not by raters, so they stay. The product's export is unchanged.
 - **Order.** Section 2 (runner and synthetic tests) comes before section 1, because the dataset
   waits on the maintainers.
 

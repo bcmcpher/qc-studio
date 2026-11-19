@@ -11,7 +11,18 @@ from typing import Any
 import pytest
 
 from evidence_bundle.feedback import load_feedback
-from evidence_bundle.models import DistributionContext, EvidenceBundle, MetricEvidence, ViewRef
+from evidence_bundle.models import (
+    AcquisitionDeviation,
+    AcquisitionMetadata,
+    DistributionContext,
+    EvidenceBundle,
+    MetricEvidence,
+    ProvenanceMetadata,
+    RaterQC,
+    ScannerMetadata,
+    SequenceMetadata,
+    ViewRef,
+)
 
 SANDBOX_DIR = Path(__file__).resolve().parents[2] / "sandbox"
 if str(SANDBOX_DIR) not in sys.path:
@@ -83,10 +94,21 @@ def _bundle(pid: str, flagged: bool) -> EvidenceBundle:
         suffix="T1w",
         support="supported",
         context_suffix="T1w",
-        project=DistributionContext(n=40),
-        reference=DistributionContext(n=1200),
+        acquisition=AcquisitionMetadata(
+            site="SiteAlpha",
+            scanner=ScannerMetadata(Manufacturer="Siemens", ManufacturersModelName="Prisma", SoftwareVersions="syngo_E11"),
+            sequence=SequenceMetadata(RepetitionTime=2.3),
+            provenance=ProvenanceMetadata(mriqc_version="24.0.0", md5sum="d41d8cd98f00b204"),
+        ),
+        acquisition_deviations=[
+            AcquisitionDeviation(field="Manufacturer", value="Siemens", expected="GE", share=0.9, n=40),
+            AcquisitionDeviation(field="FlipAngle", value=8.0, expected=9.0, share=0.9, n=40),
+        ],
+        project=DistributionContext(n=40, filters={"site": "SiteAlpha"}),
+        reference=DistributionContext(n=1200, filters={"Manufacturer": "Siemens", "MagneticFieldStrength": "3", "VoxelSize": "1x1x1"}),
         metrics=[_metric("snr_wm", flags=["project_outlier"] if flagged else []), _metric("cjv")],
         views=[*core, noise],
+        rater_qc=RaterQC(rater_id="rater1", final_qc="FAIL", notes="ghosting"),
     )
 
 
@@ -165,9 +187,35 @@ class TestVariants:
         text = run_eval.package_text(_bundle("sub-02", flagged=False), reason)
         assert "control" not in text.lower()
 
-    def test_package_keeps_metrics(self):
+    def test_package_keeps_evidence(self):
         text = run_eval.package_text(_bundle("sub-01", flagged=True), "stated")
-        assert "`snr_wm`" in text and "## Rater QC" in text
+        assert "`snr_wm`" in text and "Flagged metrics: `snr_wm`" in text
+        assert "| sequence | `RepetitionTime` | 2.3 |" in text and "`mriqc_version`" in text
+        assert "`FlipAngle`: 8" in text and "VoxelSize=1x1x1" in text
+
+    @pytest.mark.parametrize("reason", ["stated", "hidden"])
+    def test_package_withholds_identifiers_and_rater(self, reason):
+        text = run_eval.package_text(_bundle("sub-01", flagged=True), reason)
+        for leak in (
+            "sub-01",
+            "ses-01",
+            "mriqc /",
+            "anat",
+            "SiteAlpha",
+            "site",
+            "Siemens",
+            "Prisma",
+            "syngo",
+            "Manufacturer",
+            "MagneticFieldStrength=",
+            "d41d8cd98f00b204",
+            "md5sum",
+            "Rater QC",
+            "rater1",
+            "ghosting",
+            "FAIL",
+        ):
+            assert leak not in text, leak
 
     def test_model_key_is_filesystem_safe(self):
         key = run_eval.model_key("openai_compat", "org/llava 7b:q4")

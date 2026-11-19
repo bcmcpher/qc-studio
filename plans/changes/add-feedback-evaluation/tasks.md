@@ -21,8 +21,7 @@ As built (section 2):
   core have one variant each. A cell is `<adapter>__<model id>/<variant>`. One invocation runs
   one adapter; more adapters are more invocations into the same `--out_dir`.
 - Variants are staged per (bundle, cell) in `OUT/<model_key>/<variant>/<bundle path>/`:
-  the variant's `bundle.json` (views filtered), a re-rendered `PACKAGE.md` (export's
-  `package_context` and template, with only the "Views" section replaced), copies of the kept
+  the variant's `bundle.json` (views filtered), a blind `PACKAGE.md` (below), copies of the kept
   views renamed `views/view_NN.png` (export names them after kind and rule, and the prompt lists
   each image's path), and `cell.json` (variant, source bundle, whether the scan is a control
   scan, and the targeted and control rules of the views this variant shows). The metadata is
@@ -35,6 +34,12 @@ As built (section 2):
   the runner drops that word, since a model that reads it knows the view is not a real flag.
   "Stated" lists `targeted <plane>, rule <rule>`; "hidden" lists only `<plane> view`, dropping
   the core/targeted kind too, since "targeted" alone suggests a problem.
+- Blind package (review finding, user decision 2026-11-19; see design.md): `PACKAGE.md` is
+  rendered from the export's `package_context` with `sandbox/evaluation/PACKAGE_eval.md`, the
+  export template without the scan-identifier header and the "Rater QC" section.
+  `WITHHELD_FIELDS` (`site`, `md5sum` and every `ScannerMetadata` field) are removed from the
+  acquisition table, the deviations and the distribution filter values; signature field names
+  stay. `mriqc_version` stays.
 - 2.2: the runner calls the adapter's `send()` directly, as `run_feedback.py` does, rather than
   shelling out to it. `run_feedback.py` gained `add_adapter_args` and `resolve_model_id` so both
   CLIs share the adapter options. An existing `feedback.json` in a cell folder is read, not
@@ -54,7 +59,7 @@ As built (section 2):
   confidence, flagged metrics, `control_confirmed` (a flagged metric matches a control rule's
   metrics), label, original label, agreement, error. `--labels` takes a TSV of `bids_name`,
   `label` (`pass`/`fail`/`uncertain`), optional `original_label` — the shape task 1.3 must write; blank lines are skipped, an empty or duplicate `bids_name` is an error.
-- 2.5: `ui/tests/test_feedback_evaluation.py` (33 tests): a flagged scan with a targeted noise
+- 2.5: `ui/tests/test_feedback_evaluation.py` (35 tests): a flagged scan with a targeted noise
   view and a clean scan with the same view as a control.
 
 ## 3. Report — `sandbox/evaluation/report.py`
